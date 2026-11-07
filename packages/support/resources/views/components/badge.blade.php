@@ -81,7 +81,8 @@
                 'disabled' => $disabled && blank($tooltip),
                 'form' => $tag === 'button' ? $formId : null,
                 'type' => $tag === 'button' ? $type : null,
-                'wire:loading.attr' => $tag === 'button' ? 'disabled' : null,
+                'wire:loading.attr' => $tag === 'button' ? 'aria-disabled' : null,
+                'wire:loading.class' => $tag === 'button' ? $attributes->prepends('fi-disabled') : null,
                 'wire:target' => ($hasLoadingIndicator && $loadingIndicatorTarget) ? $loadingIndicatorTarget : null,
             ], escape: false)
             ->when(
@@ -136,10 +137,16 @@
         @endphp
 
         <button
+            data-prevent-disabled-clicks
             type="button"
             {{
                 $deleteButton->attributes
                     ->except(['label'])
+                    ->merge([
+                        'wire:loading.attr' => $deleteButtonHasLoadingIndicator ? 'aria-disabled' : null,
+                        'wire:loading.class' => $deleteButtonHasLoadingIndicator ? $deleteButton->attributes->prepends('fi-disabled') : null,
+                        'wire:target' => $deleteButtonHasLoadingIndicator ? $deleteButtonLoadingIndicatorTarget : null,
+                    ], escape: false)
                     ->class([
                         'fi-badge-delete-btn',
                     ])

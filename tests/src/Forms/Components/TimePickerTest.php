@@ -33,7 +33,7 @@ it('can render without seconds', function (): void {
         ->assertSuccessful();
 });
 
-describe('`hasDate()` override effects', function (): void {
+describe('time-only configuration', function (): void {
     it('returns `false` for `hasDate()`', function (): void {
         $picker = TimePicker::make('time');
 
@@ -101,25 +101,17 @@ describe('`hasDate()` override effects', function (): void {
     });
 });
 
-it('has no accessibility issues in light mode', function (): void {
-    retry(10, function (): void {
-        $this->actingAs(User::factory()->create());
+it('has no accessibility issues in light and dark modes', function (): void {
+    $this->actingAs(User::factory()->create());
 
-        visit('/time-picker-browser-test')
-            ->assertSee('Test Time Picker')
-            ->assertNoSmoke()
-            ->assertNoAccessibilityIssues();
-    });
-});
+    $page = visit('/time-picker-browser-test');
 
-it('has no accessibility issues in dark mode', function (): void {
-    retry(10, function (): void {
-        $this->actingAs(User::factory()->create());
+    $page
+        ->assertNoSmoke()
+        ->assertNoAccessibilityIssues();
 
-        visit('/time-picker-browser-test')
-            ->inDarkMode()
-            ->assertNoAccessibilityIssues();
-    });
+    $page->inDarkMode()
+        ->assertNoAccessibilityIssues();
 });
 
 class TestComponentWithTimePicker extends Livewire

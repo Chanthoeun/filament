@@ -4,6 +4,12 @@ return [
 
     'builder' => [
 
+        'reordering' => [
+            'item' => 'Blok',
+            'position' => ':label, pozice :position z :count',
+            'moved' => ':label je nyní na pozici :position z :count',
+        ],
+
         'actions' => [
 
             'clone' => [
@@ -104,9 +110,19 @@ return [
 
         ],
 
+        'block_picker' => [
+
+            'no_search_results_message' => 'Žádné bloky neodpovídají vašemu hledání.',
+
+            'search_prompt' => 'Hledat bloky',
+
+        ],
+
     ],
 
     'checkbox_list' => [
+
+        'required_description' => 'Vyberte alespoň jednu možnost.',
 
         'actions' => [
 
@@ -153,6 +169,8 @@ return [
     ],
 
     'file_upload' => [
+
+        'placeholder' => 'Žádné nahrané soubory',
 
         'actions' => [
 
@@ -294,6 +312,10 @@ return [
 
     ],
 
+    'js_field' => [
+        'failed_to_load' => 'Toto pole se nepodařilo načíst. Pro nový pokus obnovte stránku.',
+    ],
+
     'key_value' => [
 
         'actions' => [
@@ -304,6 +326,14 @@ return [
 
             'delete' => [
                 'label' => 'Smazat řádek',
+            ],
+
+            'move_down' => [
+                'label' => 'Posunout dolů',
+            ],
+
+            'move_up' => [
+                'label' => 'Posunout nahoru',
             ],
 
             'reorder' => [
@@ -334,6 +364,12 @@ return [
                 'label' => 'Hodnota',
             ],
 
+        ],
+
+        'reordering' => [
+            'row' => 'Řádek',
+            'position' => ':label, pozice :position z :count',
+            'moved' => ':label je nyní na pozici :position z :count',
         ],
 
     ],
@@ -394,6 +430,12 @@ return [
     ],
 
     'repeater' => [
+
+        'reordering' => [
+            'item' => 'Položka',
+            'position' => ':label, pozice :position z :count',
+            'moved' => ':label je nyní na pozici :position z :count',
+        ],
 
         'columns' => [
 
@@ -493,6 +535,10 @@ return [
 
                 ],
 
+            ],
+
+            'close_panel' => [
+                'label' => 'Zavřít panel',
             ],
 
             'custom_block' => [
@@ -659,6 +705,28 @@ return [
 
         ],
 
+        'custom_blocks' => [
+
+            'actions' => [
+
+                'delete' => [
+                    'label' => 'Smazat blok',
+                ],
+
+                'edit' => [
+                    'label' => 'Upravit blok',
+                ],
+
+            ],
+
+            'no_search_results_message' => 'Žádné bloky neodpovídají vašemu hledání.',
+
+            'search_label' => 'Hledat bloky',
+
+            'search_prompt' => 'Hledat bloky',
+
+        ],
+
         'file_attachments_accepted_file_types_message' => 'Nahrané soubory musí být typu: :values.',
 
         'file_attachments_max_size_message' => 'Nahrané soubory nesmí být větší než :max kB.',
@@ -736,6 +804,10 @@ return [
 
         'actions' => [
 
+            'clear' => [
+                'label' => 'Vymazat výběr',
+            ],
+
             'create_option' => [
 
                 'label' => 'Vytvořit',
@@ -780,12 +852,18 @@ return [
 
             ],
 
+            'remove_option' => [
+                'label' => 'Odebrat :label',
+            ],
+
         ],
 
         'boolean' => [
             'true' => 'Ano',
             'false' => 'Ne',
         ],
+
+        'error_message' => 'Možnosti se nepodařilo načíst. Zkuste to prosím znovu.',
 
         'loading_message' => 'Načítání...',
 
@@ -797,7 +875,11 @@ return [
 
         'placeholder' => 'Zvolte některou z možností',
 
+        'required_description' => 'Vyberte možnost.',
+
         'searching_message' => 'Hledání...',
+
+        'search_label' => 'Hledat',
 
         'search_prompt' => 'Zadejte hledaný výraz...',
 
@@ -843,6 +925,8 @@ return [
     ],
 
     'toggle_buttons' => [
+
+        'required_description' => 'Vyberte alespoň jednu možnost.',
 
         'boolean' => [
             'true' => 'Ano',

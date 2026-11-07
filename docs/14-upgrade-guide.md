@@ -1,10 +1,6 @@
 ---
 title: Upgrade guide
 ---
-import Aside from "@components/Aside.astro"
-import Checkbox from "@components/Checkbox.astro"
-import Checkboxes from "@components/Checkboxes.astro"
-import Disclosure from "@components/Disclosure.astro"
 
 <Aside variant="info">
     If you see anything missing from this guide, please don’t hesitate to [make a pull request](https://github.com/filamentphp/filament/edit/4.x/docs/14-upgrade-guide.md) to our repository! Any help is appreciated!
@@ -148,11 +144,11 @@ return [
 To begin, filter the upgrade guide for your specific needs by selecting only the packages that you use in your project:
 
 <Checkboxes>
-    <Checkbox value="panels" model="packages">
+    <Checkbox value="panels">
         Panels
     </Checkbox>
 
-    <Checkbox value="forms" model="packages">
+    <Checkbox value="forms">
         Forms
 
         <span slot="description">
@@ -160,7 +156,7 @@ To begin, filter the upgrade guide for your specific needs by selecting only the
         </span>
     </Checkbox>
 
-    <Checkbox value="infolists" model="packages">
+    <Checkbox value="infolists">
         Infolists
 
         <span slot="description">
@@ -168,7 +164,7 @@ To begin, filter the upgrade guide for your specific needs by selecting only the
         </span>
     </Checkbox>
 
-    <Checkbox value="tables" model="packages">
+    <Checkbox value="tables">
         Tables
 
         <span slot="description">
@@ -176,7 +172,7 @@ To begin, filter the upgrade guide for your specific needs by selecting only the
         </span>
     </Checkbox>
 
-    <Checkbox value="actions" model="packages">
+    <Checkbox value="actions">
         Actions
 
         <span slot="description">
@@ -184,7 +180,7 @@ To begin, filter the upgrade guide for your specific needs by selecting only the
         </span>
     </Checkbox>
 
-    <Checkbox value="notifications" model="packages">
+    <Checkbox value="notifications">
         Notifications
 
         <span slot="description">
@@ -192,7 +188,7 @@ To begin, filter the upgrade guide for your specific needs by selecting only the
         </span>
     </Checkbox>
 
-    <Checkbox value="widgets" model="packages">
+    <Checkbox value="widgets">
         Widgets
 
         <span slot="description">
@@ -200,11 +196,11 @@ To begin, filter the upgrade guide for your specific needs by selecting only the
         </span>
     </Checkbox>
 
-    <Checkbox value="support" model="packages">
+    <Checkbox value="support">
         Blade UI components
     </Checkbox>
 
-    <Checkbox value="spatie-translatable-plugin" model="packages">
+    <Checkbox value="spatie-translatable-plugin">
         Spatie Translatable Plugin
     </Checkbox>
 </Checkboxes>
@@ -528,7 +524,7 @@ To find out if you’re using this parameter in your code, try searching for `'a
 
 When using tenancy in v3, Filament only scoped resource queries to the current tenant: to render the resource table, resolve URL parameters, and fetch global search results. There were many situations where other queries in the panel weren’t scoped by default, and the developer had to manually scope them. While this was a documented feature, it created a lot of additional work for developers.
 
-In v4, Filament automatically scopes all queries in a panel to the current tenant, and automatically associates new records with the current tenant using model events. This means that you no longer need to manually scope queries or associate new Eloquent records in most cases. There are still some important points to consider, so the [documentation](users/tenancy#tenancy-security) has been updated to reflect this.
+In v4, Filament automatically scopes Eloquent queries for tenant-aware resource models registered in the panel once the current tenant has been identified. It also associates newly created records for those models with the current tenant using model events. Queries for other models still require your own tenant scoping. There are also some important limitations, so the [documentation](users/tenancy#tenancy-security) has been updated to explain them.
 </Disclosure>
 
 <Disclosure x-show="packages.includes('forms')">
@@ -565,9 +561,11 @@ This behavior can be customized in the [importer](actions/import#customizing-the
 ### Low-impact changes
 
 <Disclosure x-show="packages.includes('tables') || packages.includes('infolists')">
-<span slot="summary">The `isSeparate` parameter of `ImageColumn::limitedRemainingText()` and `ImageEntry::limitedRemainingText()` has been removed</span>
+<span slot="summary">Remaining image counts follow the stack layout</span>
 
-Previously, users were able to display the number of limited images separately to an image stack using the `isSeparate` parameter. Now the parameter has been removed, and if a stack exists, the text will always be stacked on top and not separate. If the images aren’t stacked, the text will be separate.
+Previously, users were able to display the number of limited images separately to an image stack using the `isSeparate` parameter. In the built-in `ImageColumn` and `ImageEntry` renderers, the text is now stacked on top when the images are stacked, and separate otherwise.
+
+The `isSeparate` parameter has been removed from `ImageColumn::limitedRemainingText()`. `ImageEntry::limitedRemainingText()` retains the parameter, along with `limitedRemainingTextSeparate()` and `isLimitedRemainingTextSeparate()`, for custom views. The built-in `ImageEntry` renderer does not use this setting.
 </Disclosure>
 
 <Disclosure x-show="packages.includes('forms')">

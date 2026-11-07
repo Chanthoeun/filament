@@ -6,6 +6,8 @@ use Filament\Tests\Fixtures\Models\User;
 use Filament\Tests\TestCase;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
+use Filament\Widgets\View\Components\StatsOverviewWidgetComponent\StatComponent\ChartComponent;
+use Filament\Widgets\View\Components\StatsOverviewWidgetComponent\StatComponent\StatsOverviewWidgetStatChartComponent;
 use Illuminate\Support\Facades\Artisan;
 use Livewire\Livewire;
 
@@ -83,6 +85,47 @@ it('initializes `$chartDataChecksums` on mount via `mountHasChartData()`', funct
         ->and($chartDataChecksums['stats-overview-stat-0'])->toBe(md5(json_encode([1, 2, 3])));
 });
 
+it('honors legacy and canonical chart container bindings', function (bool $hasLegacyBinding, bool $hasCanonicalBinding, ?string $expectedColorClass): void {
+    expect(app(StatsOverviewWidgetStatChartComponent::class))->toBeInstanceOf(ChartComponent::class);
+
+    if ($hasLegacyBinding) {
+        app()->bind(StatsOverviewWidgetStatChartComponent::class, static fn () => new class extends StatsOverviewWidgetStatChartComponent
+        {
+            public function getColorMap(array $color): array
+            {
+                return ['bg' => 300];
+            }
+        });
+    }
+
+    if ($hasCanonicalBinding) {
+        app()->bind(ChartComponent::class, static fn () => new class extends ChartComponent
+        {
+            public function getColorMap(array $color): array
+            {
+                return ['bg' => 700];
+            }
+        });
+    }
+
+    Stat::configureUsing(
+        static fn (Stat $stat) => $stat->chartColor('success'),
+        during: fn () => Livewire::test(TestStatsOverviewWidgetWithChart::class)
+            ->when(
+                $expectedColorClass !== null,
+                fn ($livewire) => $livewire->assertSeeHtml($expectedColorClass),
+                fn ($livewire) => $livewire
+                    ->assertDontSeeHtml('fi-bg-color-300')
+                    ->assertDontSeeHtml('fi-bg-color-700'),
+            ),
+    );
+})->with([
+    'default' => [false, false, null],
+    'legacy binding' => [true, false, 'fi-bg-color-300'],
+    'canonical binding' => [false, true, 'fi-bg-color-700'],
+    'canonical binding takes precedence' => [true, true, 'fi-bg-color-700'],
+]);
+
 it('does not dispatch `updateStatsOverviewChartData` when chart data is unchanged', function (): void {
     TestStatsOverviewWidgetWithChart::$chartData = [1, 2, 3];
 
@@ -130,27 +173,20 @@ it('renders `placeholder()` for values considered blank by `blank()`', function 
     'whitespace-only string' => ['   '],
 ]);
 
-it('has no accessibility issues in light mode', function (): void {
-    retry(10, function (): void {
-        $this->actingAs(User::factory()->create());
+it('renders accessible charts in light and dark modes', function (): void {
+    $this->actingAs(User::factory()->create());
 
-        visit('/stats-overview-widget-browser-test')
-            ->assertSee('Total orders')
-            ->assertSee('Not available')
-            ->assertNoAccessibilityIssues();
-    });
-});
+    $page = visit('/stats-overview-widget-browser-test');
 
-it('has no accessibility issues in dark mode', function (): void {
-    retry(10, function (): void {
-        $this->actingAs(User::factory()->create());
+    $page
+        ->assertVisible('[data-testid="orders-stat"] canvas')
+        ->assertNoSmoke()
+        ->assertNoAccessibilityIssues();
 
-        visit('/stats-overview-widget-browser-test')
-            ->inDarkMode()
-            ->assertSee('Total orders')
-            ->assertSee('Not available')
-            ->assertNoAccessibilityIssues();
-    });
+    $page->inDarkMode()
+        ->assertVisible('[data-testid="orders-stat"] canvas')
+        ->assertNoSmoke()
+        ->assertNoAccessibilityIssues();
 });
 
 class TestStatsOverviewWidgetDefault extends StatsOverviewWidget

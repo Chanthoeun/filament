@@ -281,6 +281,61 @@ class Field extends Component implements Contracts\HasValidationRules
         return $errors->has($statePath);
     }
 
+    public function hasValidationError(): bool
+    {
+        $statePath = $this->getStatePath();
+
+        return $this->hasErrorForPath($statePath) || (
+            ($this instanceof Contracts\HasNestedRecursiveValidationRules)
+            && filled($statePath)
+            && $this->hasErrorForPath("{$statePath}.*")
+        );
+    }
+
+    /**
+     * @return array<string>
+     */
+    public function getDescriptionIds(): array
+    {
+        if ($this->getFieldWrapperView() === 'filament-forms::plain-field-wrapper') {
+            return [];
+        }
+
+        $ids = [];
+
+        if ($helperTextId = $this->getHelperTextId()) {
+            $ids[] = $helperTextId;
+        }
+
+        if ($this->hasValidationError()) {
+            $ids[] = $this->getId() . '-error';
+        }
+
+        if (filled($this->getRequiredDescription())) {
+            $ids[] = $this->getId() . '-required';
+        }
+
+        return $ids;
+    }
+
+    public function getRequiredDescription(): ?string
+    {
+        return null;
+    }
+
+    /**
+     * @return array<string, string | null>
+     */
+    public function getAccessibilityAttributes(): array
+    {
+        $descriptionIds = $this->getDescriptionIds();
+
+        return [
+            'aria-describedby' => $descriptionIds ? e(implode(' ', $descriptionIds)) : null,
+            'aria-invalid' => $this->hasValidationError() ? 'true' : null,
+        ];
+    }
+
     /**
      * @internal This method is not part of the public API and should not be used. Its parameters may change at any time without notice.
      *
@@ -303,7 +358,7 @@ class Field extends Component implements Contracts\HasValidationRules
             ? view()->shared('errors')->getBag('default')
             : new MessageBag;
 
-        $hasError = filled($statePath) && ($errors->has($statePath) || ($hasNestedRecursiveValidationRules && $errors->has("{$statePath}.*")));
+        $hasError = $this->hasValidationError();
 
         $errorMessage = null;
         $errorMessages = null;
@@ -380,10 +435,21 @@ class Field extends Component implements Contracts\HasValidationRules
         $belowLabelSchema = $this->getChildSchema(static::BELOW_LABEL_SCHEMA_KEY)?->toHtmlString();
         $beforeLabelSchema = $this->getChildSchema(static::BEFORE_LABEL_SCHEMA_KEY)?->toHtmlString();
         $afterLabelSchema = $this->getChildSchema(static::AFTER_LABEL_SCHEMA_KEY)?->toHtmlString();
-        $aboveContentSchema = $this->getChildSchema(static::ABOVE_CONTENT_SCHEMA_KEY)?->toHtmlString();
+
+        $aboveContentSchema = $this->getChildSchema(static::ABOVE_CONTENT_SCHEMA_KEY);
+        $hasAboveContentSchema = $this->hasChildSchemaConfiguration(static::ABOVE_CONTENT_SCHEMA_KEY) || $aboveContentSchema;
+        $aboveContentSchema = $aboveContentSchema?->toHtmlString();
+
         $belowContentSchema = $this->getChildSchema(static::BELOW_CONTENT_SCHEMA_KEY)?->toHtmlString();
-        $beforeContentSchema = $this->getChildSchema(static::BEFORE_CONTENT_SCHEMA_KEY)?->toHtmlString();
-        $afterContentSchema = $this->getChildSchema(static::AFTER_CONTENT_SCHEMA_KEY)?->toHtmlString();
+
+        $beforeContentSchema = $this->getChildSchema(static::BEFORE_CONTENT_SCHEMA_KEY);
+        $hasBeforeContentSchema = $this->hasChildSchemaConfiguration(static::BEFORE_CONTENT_SCHEMA_KEY) || $beforeContentSchema;
+        $beforeContentSchema = $beforeContentSchema?->toHtmlString();
+
+        $afterContentSchema = $this->getChildSchema(static::AFTER_CONTENT_SCHEMA_KEY);
+        $hasAfterContentSchema = $this->hasChildSchemaConfiguration(static::AFTER_CONTENT_SCHEMA_KEY) || $afterContentSchema;
+        $afterContentSchema = $afterContentSchema?->toHtmlString();
+
         $aboveErrorMessageSchema = $this->getChildSchema(static::ABOVE_ERROR_MESSAGE_SCHEMA_KEY)?->toHtmlString();
         $belowErrorMessageSchema = $this->getChildSchema(static::BELOW_ERROR_MESSAGE_SCHEMA_KEY)?->toHtmlString();
 
@@ -463,11 +529,24 @@ class Field extends Component implements Contracts\HasValidationRules
 
             <?php if (filled($html) || $hasError || $aboveContentSchema || $belowContentSchema || $beforeContentSchema || $afterContentSchema || $aboveErrorMessageSchema || $belowErrorMessageSchema) { ?>
                 <div class="fi-fo-field-content-col">
-                    <?= $aboveContentSchema?->toHtml() ?>
+                    <?php if ($hasAboveContentSchema) { ?>
+                        <div class="fi-fo-field-content-slot">
+                            <?= $aboveContentSchema?->toHtml() ?>
+                        </div>
+                    <?php } ?>
 
-                    <?php if ($beforeContentSchema || $afterContentSchema) { ?>
-                        <div class="fi-fo-field-content-ctn">
-                            <?= $beforeContentSchema?->toHtml() ?>
+                    <?php if ($hasBeforeContentSchema || $hasAfterContentSchema) { ?>
+                        <div
+                            <?= (new FilamentComponentAttributeBag)->class([
+                                'fi-fo-field-content-ctn',
+                                'fi-empty' => ! ($beforeContentSchema || $afterContentSchema),
+                            ])->toHtml() ?>
+                        >
+                            <?php if ($hasBeforeContentSchema) { ?>
+                                <div class="fi-fo-field-content-slot">
+                                    <?= $beforeContentSchema?->toHtml() ?>
+                                </div>
+                            <?php } ?>
 
                             <div class="fi-fo-field-content">
                                 <?= $html ?>
@@ -485,7 +564,7 @@ class Field extends Component implements Contracts\HasValidationRules
                         <?= $aboveErrorMessageSchema?->toHtml() ?>
 
                         <?php if (filled($errorMessages)) { ?>
-                            <ul data-validation-error class="fi-fo-field-wrp-error-list">
+                            <ul id="<?= e($id) ?>-error" data-validation-error class="fi-fo-field-wrp-error-list">
                                 <?php foreach ($errorMessages as $errorMsg) { ?>
                                     <li class="fi-fo-field-wrp-error-message">
                                         <?php if ($areHtmlErrorMessagesAllowed) { ?>
@@ -497,11 +576,11 @@ class Field extends Component implements Contracts\HasValidationRules
                                 <?php } ?>
                             </ul>
                         <?php } elseif ($areHtmlErrorMessagesAllowed) { ?>
-                            <div data-validation-error class="fi-fo-field-wrp-error-message">
+                            <div id="<?= e($id) ?>-error" data-validation-error class="fi-fo-field-wrp-error-message">
                                 <?= $errorMessage ?>
                             </div>
                         <?php } else { ?>
-                            <p data-validation-error class="fi-fo-field-wrp-error-message">
+                            <p id="<?= e($id) ?>-error" data-validation-error class="fi-fo-field-wrp-error-message">
                                 <?= e($errorMessage) ?>
                             </p>
                         <?php } ?>
@@ -509,6 +588,10 @@ class Field extends Component implements Contracts\HasValidationRules
                         <?= $belowErrorMessageSchema?->toHtml() ?>
                     <?php } ?>
                 </div>
+            <?php } ?>
+
+            <?php if (filled($requiredDescription = $this->getRequiredDescription())) { ?>
+                <span id="<?= e($id) ?>-required" class="fi-sr-only"><?= e($requiredDescription) ?></span>
             <?php } ?>
         </div>
 
@@ -561,9 +644,8 @@ class Field extends Component implements Contracts\HasValidationRules
         $loadingIndicatorTarget = $hasLoadingIndicator ? html_entity_decode((string) $wireTarget, ENT_QUOTES) : null;
         $loadingDelay = config('filament.livewire_loading_delay', 'default');
 
-        $hasFocusInputListener = $attributes->has('x-on:focus-input.stop');
-        $canClickPrefixAffix = $hasFocusInputListener && ($prefixIcon || filled($prefix));
-        $canClickSuffixAffix = $hasFocusInputListener && ($suffixIcon || filled($suffix));
+        $canClickPrefixAffix = $prefixIcon || filled($prefix);
+        $canClickSuffixAffix = $suffixIcon || filled($suffix);
 
         $wrapperAttributes = $attributes
             ->except(['wire:target', 'tabindex'])
@@ -611,16 +693,13 @@ class Field extends Component implements Contracts\HasValidationRules
 
                 if ($canClickPrefixAffix) {
                     $prefixDivAttributes = $prefixDivAttributes->merge([
-                        'x-on:click' => '$dispatch(\'focus-input\')',
+                        'x-on:click' => "if (! \$event.target.closest('.fi-input-wrp-actions')) \$dispatch('focus-input')",
                     ], escape: false);
                 }
                 ?>
                 <div <?= $prefixDivAttributes->toHtml() ?>>
                     <?php if (count($prefixActions)) { ?>
-                        <div
-                            class="fi-input-wrp-actions"
-                            <?php if ($canClickPrefixAffix) { ?>x-on:click.stop<?php } ?>
-                        >
+                        <div class="fi-input-wrp-actions">
                             <?php foreach ($prefixActions as $prefixAction) { ?>
                                 <?= $prefixAction->toHtml() ?>
                             <?php } ?>
@@ -678,7 +757,7 @@ class Field extends Component implements Contracts\HasValidationRules
 
                 if ($canClickSuffixAffix) {
                     $suffixDivAttributes = $suffixDivAttributes->merge([
-                        'x-on:click' => '$dispatch(\'focus-input\')',
+                        'x-on:click' => "if (! \$event.target.closest('.fi-input-wrp-actions')) \$dispatch('focus-input')",
                     ], escape: false);
                 }
                 ?>
@@ -700,10 +779,7 @@ class Field extends Component implements Contracts\HasValidationRules
                     )?->toHtml() ?>
 
                     <?php if (count($suffixActions)) { ?>
-                        <div
-                            class="fi-input-wrp-actions"
-                            <?php if ($canClickSuffixAffix) { ?>x-on:click.stop<?php } ?>
-                        >
+                        <div class="fi-input-wrp-actions">
                             <?php foreach ($suffixActions as $suffixAction) { ?>
                                 <?= $suffixAction->toHtml() ?>
                             <?php } ?>

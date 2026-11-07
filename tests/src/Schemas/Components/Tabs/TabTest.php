@@ -286,24 +286,40 @@ describe('deferred badge', function (): void {
     it('defaults `isBadgeDeferred()` to `false`', function (): void {
         $tab = Tab::make('Test');
 
-        expect($tab->isBadgeDeferred())->toBeFalse();
+        expect($tab->isBadgeDeferred())->toBeFalse()
+            ->and($tab->isBadgeLazyLoaded())->toBeFalse();
     });
 
-    it('can set `deferBadge()`', function (): void {
-        $tab = Tab::make('Test')->deferBadge();
+    it('can enable lazy badge loading', function (string $method): void {
+        $tab = Tab::make('Test')->{$method}();
 
-        expect($tab->isBadgeDeferred())->toBeTrue();
-    });
+        expect($tab->isBadgeDeferred())->toBeTrue()
+            ->and($tab->isBadgeLazyLoaded())->toBeTrue();
+    })->with(['lazyLoadedBadge', 'deferBadge']);
 
-    it('can unset `deferBadge()`', function (): void {
-        $tab = Tab::make('Test')->deferBadge()->deferBadge(false);
-
-        expect($tab->isBadgeDeferred())->toBeFalse();
-    });
-
-    it('can set `deferBadge()` with a `Closure`', function (): void {
+    it('can configure lazy badge loading with a `Closure`', function (string $method): void {
         $tab = Tab::make('Test')
-            ->deferBadge(static fn (): bool => true);
+            ->{$method}(static fn (): bool => true);
+
+        expect($tab->isBadgeDeferred())->toBeTrue()
+            ->and($tab->isBadgeLazyLoaded())->toBeTrue();
+    })->with(['lazyLoadedBadge', 'deferBadge']);
+
+    it('shares configuration between `lazyLoadedBadge()` and `deferBadge()`', function (): void {
+        $tab = Tab::make('Test')->lazyLoadedBadge()->deferBadge(false);
+
+        expect($tab->isBadgeLazyLoaded())->toBeFalse()
+            ->and($tab->deferBadge()->lazyLoadedBadge(false)->isBadgeDeferred())->toBeFalse();
+    });
+
+    it('forwards `isBadgeDeferred()` to an overridden `isBadgeLazyLoaded()`', function (): void {
+        $tab = new class('Test') extends Tab
+        {
+            public function isBadgeLazyLoaded(): bool
+            {
+                return true;
+            }
+        };
 
         expect($tab->isBadgeDeferred())->toBeTrue();
     });
@@ -346,18 +362,18 @@ describe('exclude query when resolving record', function (): void {
         expect($tab->shouldExcludeQueryWhenResolvingRecord())->toBeTrue();
     });
 
+    it('can set `excludeQueryWhenResolvingRecord()` with a `Closure`', function (): void {
+        $tab = Tab::make('Test')
+            ->excludeQueryWhenResolvingRecord(static fn (): bool => true);
+
+        expect($tab->shouldExcludeQueryWhenResolvingRecord())->toBeTrue();
+    });
+
     it('can set `excludeQueryWhenResolvingRecord()` to `false`', function (): void {
         $tab = Tab::make('Test')
             ->excludeQueryWhenResolvingRecord()
             ->excludeQueryWhenResolvingRecord(false);
 
         expect($tab->shouldExcludeQueryWhenResolvingRecord())->toBeFalse();
-    });
-
-    it('can set `excludeQueryWhenResolvingRecord()` with a `Closure`', function (): void {
-        $tab = Tab::make('Test')
-            ->excludeQueryWhenResolvingRecord(static fn (): bool => true);
-
-        expect($tab->shouldExcludeQueryWhenResolvingRecord())->toBeTrue();
     });
 });

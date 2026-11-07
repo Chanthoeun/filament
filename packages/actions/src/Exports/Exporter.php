@@ -9,6 +9,7 @@ use Filament\Actions\Exports\Downloaders\Contracts\Downloader;
 use Filament\Actions\Exports\Enums\Contracts\ExportFormat as ExportFormatInterface;
 use Filament\Actions\Exports\Enums\ExportFormat;
 use Filament\Actions\Exports\Models\Export;
+use Filament\Actions\Testing\TestableExport;
 use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Component;
 use Illuminate\Database\Eloquent\Builder;
@@ -49,6 +50,15 @@ abstract class Exporter
         protected array $columnMap,
         protected array $options,
     ) {}
+
+    /**
+     * @param  array<string, string> | null  $columnMap
+     * @param  array<string, mixed>  $options
+     */
+    public static function test(?array $columnMap = null, array $options = [], ?Export $export = null): TestableExport
+    {
+        return TestableExport::make(static::class, $columnMap, $options, $export);
+    }
 
     /**
      * @return array<mixed>
@@ -120,7 +130,8 @@ abstract class Exporter
     public function getJobMiddleware(): array
     {
         return [
-            (new WithoutOverlapping("export{$this->export->getKey()}"))->expireAfter(600),
+            (new WithoutOverlapping("export{$this->export->getKey()}"))->expireAfter(600), // Legacy
+            (new WithoutOverlapping("filament:exports:{$this->export->getKey()}"))->expireAfter(600),
         ];
     }
 
@@ -185,6 +196,14 @@ abstract class Exporter
         return $this->options;
     }
 
+    public function getFileDiskName(): string
+    {
+        return $this->getFileDisk();
+    }
+
+    /**
+     * @deprecated Use `getFileDiskName()` instead.
+     */
     public function getFileDisk(): string
     {
         $disk = config('filament.default_filesystem_disk');

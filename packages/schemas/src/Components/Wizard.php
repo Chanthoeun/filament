@@ -7,8 +7,8 @@ use Filament\Actions\Action;
 use Filament\Schemas\Components\Concerns\HasLabel;
 use Filament\Schemas\Components\Wizard\Step;
 use Filament\Schemas\Contracts\HasSchemas;
-use Filament\Schemas\View\SchemaIconAlias;
-use Filament\Support\Components\Attributes\ExposedLivewireMethod;
+use Filament\Schemas\View\SchemasIconAlias;
+use Filament\Support\Components\Attributes\Exposed;
 use Filament\Support\Components\Contracts\HasEmbeddedView;
 use Filament\Support\Concerns;
 use Filament\Support\Enums\IconPosition;
@@ -92,43 +92,78 @@ class Wizard extends Component implements HasEmbeddedView
         ]);
     }
 
-    #[ExposedLivewireMethod]
-    public function nextStep(int $currentStepIndex): void
+    #[Exposed]
+    public function nextStep(mixed $currentStepIndex = null, mixed $currentStepKey = null): void
     {
-        if (! $this->isSkippable()) {
-            $steps = array_values(
-                $this
-                    ->getChildSchema()
-                    ->getComponents()
-            );
+        if ((! is_int($currentStepIndex)) || ($currentStepIndex < 0)) {
+            return;
+        }
 
-            /** @var Step $currentStep */
-            $currentStep = $steps[$currentStepIndex];
+        $steps = $this->getSteps();
 
-            /** @var ?Step $nextStep */
-            $nextStep = $steps[$currentStepIndex + 1] ?? null;
-            $this->currentStepIndex($currentStepIndex + 1);
+        if ($currentStepIndex >= (count($steps) - 1)) {
+            return;
+        }
 
+        $currentStep = $steps[$currentStepIndex];
+
+        if (($currentStepKey !== null) && ($currentStep->getKey() !== $currentStepKey)) {
+            return;
+        }
+
+        $nextAction = $this->getAction('next');
+
+        if ($nextAction->isDisabled() || (! $nextAction->isAuthorized())) {
+            return;
+        }
+
+        $this->currentStepIndex($currentStepIndex);
+        $nextStepKey = $steps[$currentStepIndex + 1]->getKey();
+        $isSkippable = $this->isSkippable();
+
+        if (! $isSkippable) {
             try {
                 $currentStep->callBeforeValidation();
                 $currentStep->getChildSchema()->validate();
                 $currentStep->callAfterValidation();
-                $nextStep?->fillStateWithNull();
             } catch (Halt $exception) {
                 return;
             }
         }
 
+        $steps = $this->getSteps();
+        $stepKeys = array_map(static fn (Step $step): ?string => $step->getKey(), $steps);
+        $currentStepIndex = array_search($currentStep->getKey(), $stepKeys, strict: true);
+        $nextStepIndex = ($currentStepIndex === false)
+            ? array_search($nextStepKey, $stepKeys, strict: true)
+            : ($currentStepIndex + 1);
+
+        if (($nextStepIndex === false) || (! isset($steps[$nextStepIndex]))) {
+            return;
+        }
+
+        $nextStep = $steps[$nextStepIndex];
+
+        if (! $isSkippable) {
+            $nextStep->fillStateWithNull();
+        }
+
+        $this->currentStepIndex($nextStepIndex);
+
         /** @var HasSchemas&LivewireComponent $livewire */
         $livewire = $this->getLivewire();
-        $livewire->dispatch('next-wizard-step', key: $this->getKey());
+        $livewire->dispatch('next-wizard-step', key: $this->getKey(), step: $nextStep->getKey(), currentStep: $currentStep->getKey());
     }
 
-    #[ExposedLivewireMethod]
-    public function previousStep(int $currentStepIndex): void
+    #[Exposed]
+    public function previousStep(mixed $currentStepIndex = null): void
     {
-        if ($currentStepIndex < 1) {
-            $currentStepIndex = 1;
+        if (
+            (! is_int($currentStepIndex)) ||
+            ($currentStepIndex < 1) ||
+            ($currentStepIndex >= count($this->getSteps()))
+        ) {
+            return;
         }
 
         $this->currentStepIndex($currentStepIndex - 1);
@@ -136,11 +171,7 @@ class Wizard extends Component implements HasEmbeddedView
 
     public function goToStep(string $step): void
     {
-        $steps = array_values(
-            $this->getChildSchema()->getComponents()
-        );
-
-        foreach ($steps as $index => $wizardStep) {
+        foreach ($this->getSteps() as $index => $wizardStep) {
             if ($wizardStep->getKey() !== $step) {
                 continue;
             }
@@ -283,12 +314,24 @@ class Wizard extends Component implements HasEmbeddedView
         if ($this->isStepPersistedInQueryString()) {
             $queryStringStep = request()->query($this->getStepQueryStringKey());
 
-            foreach ($this->getChildSchema()->getComponents() as $index => $step) {
-                if ($step->getId() !== $queryStringStep) {
-                    continue;
+            if (is_string($queryStringStep)) {
+                $steps = $this->getSteps();
+
+                foreach ($steps as $index => $step) {
+                    if ($step->getKey() !== $queryStringStep) {
+                        continue;
+                    }
+
+                    return $index + 1;
                 }
 
-                return $index + 1;
+                foreach ($steps as $index => $step) {
+                    if ($step->getId() !== $queryStringStep) {
+                        continue;
+                    }
+
+                    return $index + 1;
+                }
             }
         }
 
@@ -346,16 +389,24 @@ class Wizard extends Component implements HasEmbeddedView
         return (bool) $this->evaluate($this->isHeaderHidden);
     }
 
+    /**
+     * @return array<Step>
+     */
+    protected function getSteps(): array
+    {
+        return array_values(array_filter(
+            $this->getChildSchema()->getComponents(),
+            static fn ($component): bool => $component instanceof Step,
+        ));
+    }
+
     public function toEmbeddedHtml(): string
     {
         $isContained = $this->isContained();
         $key = $this->getKey();
         $previousAction = $this->getAction('previous');
         $nextAction = $this->getAction('next');
-        $steps = array_filter(
-            $this->getChildSchema()->getComponents(),
-            static fn ($component): bool => $component instanceof Step,
-        );
+        $steps = $this->getSteps();
 
         if (
             (count($steps) > 1) &&
@@ -367,6 +418,7 @@ class Wizard extends Component implements HasEmbeddedView
                 collect(range(0, count($steps) - 2))
                     ->map(static fn (int $stepIndex): string => "callSchemaComponentMethod({$nextActionLivewireTargetKey}, 'nextStep', " . Js::from([
                         'currentStepIndex' => $stepIndex,
+                        'currentStepKey' => $steps[$stepIndex]->getKey(),
                     ])->toHtml() . ')')
                     ->implode(', '),
             );
@@ -394,13 +446,12 @@ class Wizard extends Component implements HasEmbeddedView
             x-data="wizardSchemaComponent({
                         isSkippable: <?= Js::from($this->isSkippable()) ?>,
                         isStepPersistedInQueryString: <?= Js::from($this->isStepPersistedInQueryString()) ?>,
-                        key: <?= Js::from($key) ?>,
                         livewireId: <?= Js::from($this->getLivewire()->getId()) ?>,
                         schemaKey: <?= Js::from($this->getRootContainer()->getKey()) ?>,
                         startStep: <?= Js::from($this->getStartStep()) ?>,
                         stepQueryStringKey: <?= Js::from($this->getStepQueryStringKey()) ?>,
                     })"
-            x-on:next-wizard-step.window="if ($event.detail.key === <?= Js::from($key) ?>) goToNextStep()"
+            x-on:next-wizard-step.window="if ($event.detail.key === <?= Js::from($key) ?>) goToNextStep($event.detail.step, $event.detail.currentStep)"
             x-on:go-to-wizard-step.window="$event.detail.key === <?= Js::from($key) ?> && goToStep($event.detail.step)"
             wire:ignore.self
             <?= $outerAttributes->toHtml() ?>
@@ -451,7 +502,7 @@ class Wizard extends Component implements HasEmbeddedView
 
                                     <?= generate_icon_html(
                                         $completedIcon ?? Heroicon::OutlinedCheck,
-                                        alias: filled($completedIcon) ? null : SchemaIconAlias::COMPONENTS_WIZARD_COMPLETED_STEP,
+                                        alias: filled($completedIcon) ? null : SchemasIconAlias::COMPONENTS_WIZARD_COMPLETED_STEP,
                                         attributes: new FilamentComponentAttributeBag([
                                             'x-cloak' => 'x-cloak',
                                             'x-show' => "getStepIndex(step) > {$stepIndex}",
@@ -528,10 +579,11 @@ class Wizard extends Component implements HasEmbeddedView
                 <div
                     x-cloak
                     <?php if (! $nextAction->isDisabled()) { ?>
-                        x-on:click="requestNextStep()"
+                        x-on:click.capture="if ($el.hasAttribute('aria-disabled')) { $event.preventDefault(); $event.stopImmediatePropagation() }"
+                        x-on:click="if (! $el.hasAttribute('aria-disabled')) requestNextStep()"
                     <?php } ?>
                     x-bind:class="{ 'fi-hidden': isLastStep() }"
-                    wire:loading.attr="inert"
+                    wire:loading.attr="aria-disabled"
                 >
                     <?= $nextAction->toHtml() ?>
                 </div>

@@ -4,6 +4,8 @@ namespace Filament\Tests\Forms\Components;
 
 use Filament\Forms\Components\ToggleButtons;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\Size;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tests\Fixtures\Livewire\Livewire;
 use Filament\Tests\Fixtures\Models\User;
 use Filament\Tests\TestCase;
@@ -18,40 +20,70 @@ beforeEach(function (): void {
     Artisan::call('filament:assets');
 });
 
-it('can render', function (): void {
-    livewire(TestComponentWithToggleButtons::class)
-        ->assertSuccessful();
+describe('`size()`', function (): void {
+    it('returns `Size::Medium` from `getSize()` by default', function (): void {
+        $toggleButtons = ToggleButtons::make('status')->options(['a' => 'A']);
+
+        expect($toggleButtons->getSize())->toBe(Size::Medium);
+    });
+
+    it('can set `size()` and get `getSize()`', function (): void {
+        $toggleButtons = ToggleButtons::make('status')
+            ->options(['a' => 'A'])
+            ->size(Size::Small);
+
+        expect($toggleButtons->getSize())->toBe(Size::Small);
+    });
+
+    it('preserves custom string sizes returned by `getSize()`', function (): void {
+        $toggleButtons = ToggleButtons::make('status')
+            ->options(['a' => 'A'])
+            ->size('custom-size');
+
+        expect($toggleButtons->getSize())->toBe('custom-size');
+    });
+
+    it('can set `size()` with a `Closure`', function (): void {
+        $toggleButtons = ToggleButtons::make('status')
+            ->options(['a' => 'A'])
+            ->size(static fn (): Size => Size::Small);
+
+        expect($toggleButtons->getSize())->toBe(Size::Small);
+    });
+
+    it('normalizes string sizes returned by a `size()` `Closure`', function (): void {
+        $toggleButtons = ToggleButtons::make('status')
+            ->options(['a' => 'A'])
+            ->size(static fn (): string => 'sm');
+
+        expect($toggleButtons->getSize())->toBe(Size::Small);
+    });
+
+    it('uses the default button size when a `size()` `Closure` returns `null`', function (): void {
+        $toggleButtons = ToggleButtons::make('status')
+            ->options(['a' => 'A'])
+            ->size(static fn (): null => null);
+
+        expect($toggleButtons->getSize())->toBe(Size::Medium);
+    });
+
+    it('can reset `size()` to its default', function (): void {
+        $toggleButtons = ToggleButtons::make('status')
+            ->options(['a' => 'A'])
+            ->size(Size::Small)
+            ->size(null);
+
+        expect($toggleButtons->getSize())->toBe(Size::Medium);
+    });
 });
 
-it('can set and get state', function (): void {
-    livewire(TestComponentWithToggleButtons::class)
-        ->fillForm(['status' => 'active'])
-        ->assertSchemaStateSet(['status' => 'active']);
-});
+describe('`inline()`', function (): void {
+    it('has `isInline()` returning false by default', function (): void {
+        $toggleButtons = ToggleButtons::make('status')->options(['a' => 'A']);
 
-it('can render in boolean mode', function (): void {
-    livewire(TestComponentWithBooleanToggleButtons::class)
-        ->assertSuccessful();
-});
+        expect($toggleButtons->isInline())->toBeFalse();
+    });
 
-it('can set boolean state', function (): void {
-    livewire(TestComponentWithBooleanToggleButtons::class)
-        ->fillForm(['is_active' => 1])
-        ->assertSchemaStateSet(['is_active' => true]);
-});
-
-it('can render in multiple selection mode', function (): void {
-    livewire(TestComponentWithMultipleToggleButtons::class)
-        ->assertSuccessful();
-});
-
-it('can set multiple state', function (): void {
-    livewire(TestComponentWithMultipleToggleButtons::class)
-        ->fillForm(['tags' => ['one', 'two']])
-        ->assertSchemaStateSet(['tags' => ['one', 'two']]);
-});
-
-describe('properties', function (): void {
     it('can set `inline()` and check `isInline()`', function (): void {
         $inline = ToggleButtons::make('status')->options(['a' => 'A'])->inline();
         $notInline = ToggleButtons::make('status')->options(['a' => 'A'])->inline(false);
@@ -60,10 +92,20 @@ describe('properties', function (): void {
         expect($notInline->isInline())->toBeFalse();
     });
 
-    it('has `isInline()` returning false by default', function (): void {
+    it('can set `inline()` with a `Closure`', function (): void {
+        $buttons = ToggleButtons::make('status')
+            ->options(['a' => 'A'])
+            ->inline(static fn (): bool => true);
+
+        expect($buttons->isInline())->toBeTrue();
+    });
+});
+
+describe('`hiddenButtonLabels()`', function (): void {
+    it('has `areButtonLabelsHidden()` returning false by default', function (): void {
         $toggleButtons = ToggleButtons::make('status')->options(['a' => 'A']);
 
-        expect($toggleButtons->isInline())->toBeFalse();
+        expect($toggleButtons->areButtonLabelsHidden())->toBeFalse();
     });
 
     it('can set `hiddenButtonLabels()` and check `areButtonLabelsHidden()`', function (): void {
@@ -74,10 +116,20 @@ describe('properties', function (): void {
         expect($visible->areButtonLabelsHidden())->toBeFalse();
     });
 
-    it('has `areButtonLabelsHidden()` returning false by default', function (): void {
+    it('can set `hiddenButtonLabels()` with a `Closure`', function (): void {
+        $buttons = ToggleButtons::make('status')
+            ->options(['a' => 'A'])
+            ->hiddenButtonLabels(static fn (): bool => true);
+
+        expect($buttons->areButtonLabelsHidden())->toBeTrue();
+    });
+});
+
+describe('`multiple()`', function (): void {
+    it('has `isMultiple()` returning false by default', function (): void {
         $toggleButtons = ToggleButtons::make('status')->options(['a' => 'A']);
 
-        expect($toggleButtons->areButtonLabelsHidden())->toBeFalse();
+        expect($toggleButtons->isMultiple())->toBeFalse();
     });
 
     it('can set `multiple()` and check `isMultiple()`', function (): void {
@@ -88,24 +140,150 @@ describe('properties', function (): void {
         expect($single->isMultiple())->toBeFalse();
     });
 
-    it('has `isMultiple()` returning false by default', function (): void {
-        $toggleButtons = ToggleButtons::make('status')->options(['a' => 'A']);
+    it('returns `isMultiple()` from `hasInValidationOnMultipleValues()`', function (): void {
+        $single = ToggleButtons::make('status')->options(['a' => 'A']);
+        $multiple = ToggleButtons::make('tags')->options(['a' => 'A'])->multiple();
 
-        expect($toggleButtons->isMultiple())->toBeFalse();
+        expect($single->hasInValidationOnMultipleValues())->toBeFalse();
+        expect($multiple->hasInValidationOnMultipleValues())->toBeTrue();
     });
 
+    it('can set `multiple()` with a `Closure`', function (): void {
+        $buttons = ToggleButtons::make('tags')
+            ->options(['a' => 'A'])
+            ->multiple(static fn (): bool => true);
+
+        expect($buttons->isMultiple())->toBeTrue();
+    });
+});
+
+describe('`boolean()`', function (): void {
     it('has `hasNullableBooleanState()` returning true', function (): void {
         $toggleButtons = ToggleButtons::make('status')->options(['a' => 'A']);
 
         expect($toggleButtons->hasNullableBooleanState())->toBeTrue();
     });
 
+    it('can set custom labels for `boolean()`', function (): void {
+        $buttons = ToggleButtons::make('active')
+            ->boolean(trueLabel: 'Enabled', falseLabel: 'Disabled');
+
+        $options = $buttons->getOptions();
+
+        expect($options[1])->toBe('Enabled');
+        expect($options[0])->toBe('Disabled');
+    });
+
+    it('returns fluent `$this` from `boolean()`', function (): void {
+        $buttons = ToggleButtons::make('active');
+
+        $result = $buttons->boolean();
+
+        expect($result)->toBe($buttons);
+    });
+
+    it('sets colors and icons via `boolean()`', function (): void {
+        $buttons = ToggleButtons::make('active')->boolean();
+
+        $colors = $buttons->getColors();
+        $icons = $buttons->getIcons();
+
+        expect($colors[1])->toBe('success');
+        expect($colors[0])->toBe('danger');
+        expect($icons[1])->not->toBeNull();
+        expect($icons[0])->not->toBeNull();
+    });
+});
+
+describe('`grouped()`', function (): void {
     it('can set `grouped()`', function (): void {
         $grouped = ToggleButtons::make('status')
             ->options(['a' => 'A'])
             ->grouped();
 
         expect($grouped->isGrouped())->toBeTrue();
+    });
+});
+
+describe('`fullWidth()`', function (): void {
+    it('has `isFullWidth()` returning false by default', function (): void {
+        $toggleButtons = ToggleButtons::make('status')->options(['a' => 'A']);
+
+        expect($toggleButtons->isFullWidth())->toBeFalse();
+    });
+
+    it('can set `fullWidth()` and check `isFullWidth()`', function (): void {
+        $fullWidth = ToggleButtons::make('status')->options(['a' => 'A'])->fullWidth();
+        $notFullWidth = ToggleButtons::make('status')->options(['a' => 'A'])->fullWidth(false);
+
+        expect($fullWidth->isFullWidth())->toBeTrue();
+        expect($notFullWidth->isFullWidth())->toBeFalse();
+    });
+
+    it('can set `fullWidth()` with a `Closure`', function (): void {
+        $buttons = ToggleButtons::make('status')
+            ->options(['a' => 'A'])
+            ->fullWidth(static fn (): bool => true);
+
+        expect($buttons->isFullWidth())->toBeTrue();
+    });
+});
+
+describe('default state', function (): void {
+    it('converts boolean default state to `int`', function (): void {
+        $buttons = ToggleButtons::make('active')
+            ->boolean()
+            ->default(true);
+
+        expect($buttons->getDefaultState())->toBe(1);
+
+        $buttons->default(false);
+
+        expect($buttons->getDefaultState())->toBe(0);
+    });
+
+    it('passes through non-boolean `getDefaultState()` unchanged', function (): void {
+        $buttons = ToggleButtons::make('status')
+            ->options(['a' => 'A'])
+            ->default('a');
+
+        expect($buttons->getDefaultState())->toBe('a');
+    });
+});
+
+describe('enabled option validation', function (): void {
+    it('returns only enabled option keys from `getInValidationRuleValues()`', function (): void {
+        $buttons = ToggleButtons::make('status')
+            ->options([
+                'active' => 'Active',
+                'inactive' => 'Inactive',
+                'archived' => 'Archived',
+            ])
+            ->disableOptionWhen(static fn (string $value): bool => $value === 'archived');
+
+        $validValues = $buttons->getInValidationRuleValues();
+
+        expect($validValues)->toBe(['active', 'inactive']);
+    });
+});
+
+describe('state', function (): void {
+    it('can set and get state', function (): void {
+        livewire(TestComponentWithToggleButtons::class)
+            ->fillForm(['status' => 'active'])
+            ->assertSchemaStateSet(['status' => 'active']);
+    });
+
+    it('can set boolean state', function (): void {
+        livewire(TestComponentWithBooleanToggleButtons::class)
+            ->fillForm(['is_active' => 1])
+            ->assertSchemaStateSet(['is_active' => true]);
+    });
+
+    it('can set multiple state', function (): void {
+        livewire(TestComponentWithMultipleToggleButtons::class)
+            ->fillForm(['tags' => ['one', 'two']])
+            ->assertSchemaStateSet(['tags' => ['one', 'two']]);
     });
 });
 
@@ -139,6 +317,291 @@ describe('validation', function (): void {
             ->fillForm(['status' => null])
             ->call('save')
             ->assertHasNoFormErrors();
+    });
+});
+
+describe('rendering', function (): void {
+    it('can render', function (): void {
+        livewire(TestComponentWithToggleButtons::class)
+            ->assertSuccessful();
+    });
+
+    it('can render a single `ToggleButtons` field after a malformed Livewire state update', function (string $componentClass): void {
+        livewire($componentClass)
+            ->set('data.status', ['active'])
+            ->assertSuccessful()
+            ->assertDontSeeHtml('aria-pressed="true"');
+    })->with([[TestComponentWithToggleButtons::class], [RenderToggleButtonsWithGrouped::class]]);
+
+    it('can render in boolean mode', function (): void {
+        livewire(TestComponentWithBooleanToggleButtons::class)
+            ->assertSuccessful();
+    });
+
+    it('can render in multiple selection mode', function (): void {
+        livewire(TestComponentWithMultipleToggleButtons::class)
+            ->assertSuccessful();
+    });
+
+    it('renders the medium button size by default', function (): void {
+        Schema::make($livewire = Livewire::make())
+            ->statePath('data')
+            ->components([
+                $field = ToggleButtons::make('status')
+                    ->options(['active' => 'Active']),
+            ])
+            ->fill();
+
+        expect($field->toHtml())->toContain('fi-size-md');
+    });
+
+    it('renders the configured button size', function (): void {
+        Schema::make($livewire = Livewire::make())
+            ->statePath('data')
+            ->components([
+                $field = ToggleButtons::make('status')
+                    ->options(['active' => 'Active'])
+                    ->size(Size::Small),
+            ])
+            ->fill();
+
+        expect($field->toHtml())
+            ->toContain('fi-size-sm')
+            ->not->toContain('fi-size-md');
+    });
+
+    it('renders the configured button size when grouped', function (): void {
+        Schema::make($livewire = Livewire::make())
+            ->statePath('data')
+            ->components([
+                $field = ToggleButtons::make('status')
+                    ->options(['active' => 'Active'])
+                    ->size(Size::Small)
+                    ->grouped(),
+            ])
+            ->fill();
+
+        expect($field->toHtml())
+            ->toContain('fi-size-sm')
+            ->not->toContain('fi-size-md');
+    });
+
+    it('renders a configured string button size', function (bool $isGrouped): void {
+        Schema::make($livewire = Livewire::make())
+            ->statePath('data')
+            ->components([
+                $field = ToggleButtons::make('status')
+                    ->options(['active' => 'Active'])
+                    ->size('sm')
+                    ->grouped($isGrouped),
+            ])
+            ->fill();
+
+        expect($field->toHtml())
+            ->toContain('fi-size-sm')
+            ->not->toContain('class="fi-btn sm');
+    })->with([
+        'ungrouped' => false,
+        'grouped' => true,
+    ]);
+
+    it('escapes custom string button sizes', function (bool $isGrouped): void {
+        Schema::make($livewire = Livewire::make())
+            ->statePath('data')
+            ->components([
+                $field = ToggleButtons::make('status')
+                    ->options(['active' => 'Active'])
+                    ->size('custom-size" data-injected="yes')
+                    ->grouped($isGrouped),
+            ])
+            ->fill();
+
+        expect($field->toHtml())
+            ->toContain('custom-size&quot; data-injected=&quot;yes')
+            ->not->toContain('data-injected="yes"');
+    })->with([
+        'ungrouped' => false,
+        'grouped' => true,
+    ]);
+
+    it('renders the expected icon size for each button size', function (bool $isGrouped, Size $size, string $expectedIconSize): void {
+        Schema::make($livewire = Livewire::make())
+            ->statePath('data')
+            ->components([
+                $field = ToggleButtons::make('status')
+                    ->options(['active' => 'Active'])
+                    ->icons(['active' => Heroicon::Check])
+                    ->size($size)
+                    ->grouped($isGrouped),
+            ])
+            ->fill();
+
+        expect($field->toHtml())
+            ->toContain("fi-icon fi-size-{$expectedIconSize}");
+    })->with([
+        'ungrouped extra small' => [false, Size::ExtraSmall, 'sm'],
+        'grouped extra small' => [true, Size::ExtraSmall, 'sm'],
+        'ungrouped small' => [false, Size::Small, 'sm'],
+        'grouped small' => [true, Size::Small, 'sm'],
+        'ungrouped medium' => [false, Size::Medium, 'md'],
+        'grouped medium' => [true, Size::Medium, 'md'],
+    ]);
+
+    it('can render with `inline()`', function (): void {
+        livewire(RenderToggleButtonsWithInline::class)->assertSuccessful();
+    });
+
+    it('can render with `inline()` set via `Closure`', function (): void {
+        livewire(RenderToggleButtonsWithClosureInline::class)->assertSuccessful();
+    });
+
+    it('can render with `hiddenButtonLabels()`', function (): void {
+        livewire(RenderToggleButtonsWithHiddenLabels::class)->assertSuccessful();
+    });
+
+    it('can render with `hiddenButtonLabels()` set via `Closure`', function (): void {
+        livewire(RenderToggleButtonsWithClosureHiddenLabels::class)->assertSuccessful();
+    });
+
+    it('can render with `multiple()` set via `Closure`', function (): void {
+        livewire(RenderToggleButtonsWithClosureMultiple::class)->assertSuccessful();
+    });
+
+    it('can render with `grouped()` view', function (): void {
+        livewire(RenderToggleButtonsWithGrouped::class)->assertSuccessful();
+    });
+
+    it('can render with `fullWidth()`', function (): void {
+        livewire(RenderToggleButtonsWithFullWidth::class)->assertSuccessful();
+    });
+
+    it('can render with `fullWidth()` set via `Closure`', function (): void {
+        livewire(RenderToggleButtonsWithClosureFullWidth::class)->assertSuccessful();
+    });
+
+    it('can render with `fullWidth()` and `inline()`', function (): void {
+        livewire(RenderToggleButtonsWithFullWidthInline::class)->assertSuccessful();
+    });
+
+    it('can render with `fullWidth()` and `grouped()`', function (): void {
+        livewire(RenderToggleButtonsWithFullWidthGrouped::class)->assertSuccessful();
+    });
+
+    it('can render with `boolean()` custom labels', function (): void {
+        livewire(RenderToggleButtonsWithBooleanCustomLabels::class)
+            ->assertSuccessful()
+            ->assertSeeHtml('Enabled')
+            ->assertSeeHtml('Disabled');
+    });
+
+    it('can render with `boolean()` colors and icons', function (): void {
+        livewire(RenderToggleButtonsWithBooleanColorsIcons::class)->assertSuccessful();
+    });
+
+    it('can render with `disableOptionWhen()`', function (): void {
+        livewire(RenderToggleButtonsWithDisabledOption::class)
+            ->assertSuccessful()
+            ->assertSeeHtml('Active')
+            ->assertSeeHtml('Archived');
+    });
+
+    it('emits `allowHTML: true` when an option tooltip is `Htmlable`', function (): void {
+        Schema::make($livewire = Livewire::make())
+            ->statePath('data')
+            ->components([
+                $field = ToggleButtons::make('status')
+                    ->options(['active' => 'Active'])
+                    ->tooltips(['active' => new HtmlString('<strong>Tip</strong>')]),
+            ])
+            ->fill();
+
+        $html = $field->toHtml();
+
+        expect($html)->toContain('allowHTML: true');
+    });
+
+    it('emits `allowHTML: false` when an option tooltip is a plain string', function (): void {
+        Schema::make($livewire = Livewire::make())
+            ->statePath('data')
+            ->components([
+                $field = ToggleButtons::make('status')
+                    ->options(['active' => 'Active'])
+                    ->tooltips(['active' => 'Plain tooltip']),
+            ])
+            ->fill();
+
+        $html = $field->toHtml();
+
+        expect($html)->toContain('allowHTML: false');
+    });
+});
+
+describe('browser interactions', function (): void {
+    it('can select, replace, and clear a single `ToggleButtons` option with pointer and keyboard', function (): void {
+        $this->actingAs(User::factory()->create());
+
+        $page = visit('/toggle-buttons-test');
+        $page->assertNoSmoke();
+
+        foreach (['field', 'grouped_field'] as $fieldName) {
+            $firstButton = "[id=\"form.{$fieldName}-a\"]";
+            $secondButton = "[id=\"form.{$fieldName}-b\"]";
+
+            $page->assertAttribute($firstButton, 'aria-pressed', 'false')
+                ->click($firstButton)
+                ->assertAttribute($firstButton, 'aria-pressed', 'true')
+                ->click($secondButton)
+                ->assertAttribute($firstButton, 'aria-pressed', 'false')
+                ->assertAttribute($secondButton, 'aria-pressed', 'true');
+
+            $page->click('[data-testid="save"]')
+                ->assertSeeIn('[data-testid="saved-' . $fieldName . '"]', '"b"');
+
+            $page->click($secondButton)
+                ->assertAttribute($secondButton, 'aria-pressed', 'false')
+                ->keys($firstButton, 'Space')
+                ->assertAttribute($firstButton, 'aria-pressed', 'true')
+                ->keys($firstButton, 'Tab');
+
+            $page->assertPresent($secondButton . ':focus');
+
+            $page->keys($secondButton, 'Enter')
+                ->assertAttribute($firstButton, 'aria-pressed', 'false')
+                ->assertAttribute($secondButton, 'aria-pressed', 'true')
+                ->keys($secondButton, 'Space')
+                ->assertAttribute($secondButton, 'aria-pressed', 'false');
+        }
+
+        $page->assertAttribute('[id="form.boolean_field-0"]', 'aria-pressed', 'true')
+            ->keys('[id="form.boolean_field-0"]', 'Enter')
+            ->assertAttribute('[id="form.boolean_field-0"]', 'aria-pressed', 'false')
+            ->assertDisabled('[id="form.disabled_options-b"]')
+            ->keys('[id="form.disabled_options-c"]', 'Enter')
+            ->assertAttribute('[id="form.disabled_options-c"]', 'aria-pressed', 'false')
+            ->click('[for="form.multiple_field-a"]')
+            ->click('[for="form.multiple_field-b"]')
+            ->assertChecked('[id="form.multiple_field-a"]')
+            ->assertChecked('[id="form.multiple_field-b"]')
+            ->click('[for="form.multiple_field-a"]')
+            ->assertNotChecked('[id="form.multiple_field-a"]')
+            ->assertChecked('[id="form.multiple_field-b"]');
+
+        $page->click('[data-testid="save"]')
+            ->assertSeeIn('[data-testid="saved-field"]', 'null')
+            ->assertSeeIn('[data-testid="saved-grouped_field"]', 'null')
+            ->assertSeeIn('[data-testid="saved-boolean_field"]', 'null')
+            ->assertSeeIn('[data-testid="saved-disabled_options"]', 'null')
+            ->assertSeeIn('[data-testid="saved-multiple_field"]', '["b"]')
+            ->assertNoAccessibilityIssues();
+
+        $page->inDarkMode()
+            ->click('[id="form.field-b"]')
+            ->assertAttribute('[id="form.field-b"]', 'aria-pressed', 'true')
+            ->click('[id="form.grouped_field-b"]')
+            ->assertAttribute('[id="form.grouped_field-b"]', 'aria-pressed', 'true')
+            ->click('[for="form.multiple_field-b"]')
+            ->assertChecked('[id="form.multiple_field-b"]')
+            ->assertNoAccessibilityIssues();
     });
 });
 
@@ -233,191 +696,6 @@ class TestComponentWithMultipleToggleButtons extends Livewire
     }
 }
 
-it('can set `inline()` with a `Closure`', function (): void {
-    $buttons = ToggleButtons::make('status')
-        ->options(['a' => 'A'])
-        ->inline(static fn (): bool => true);
-
-    expect($buttons->isInline())->toBeTrue();
-});
-
-it('can set `multiple()` with a `Closure`', function (): void {
-    $buttons = ToggleButtons::make('tags')
-        ->options(['a' => 'A'])
-        ->multiple(static fn (): bool => true);
-
-    expect($buttons->isMultiple())->toBeTrue();
-});
-
-it('can set `hiddenButtonLabels()` with a `Closure`', function (): void {
-    $buttons = ToggleButtons::make('status')
-        ->options(['a' => 'A'])
-        ->hiddenButtonLabels(static fn (): bool => true);
-
-    expect($buttons->areButtonLabelsHidden())->toBeTrue();
-});
-
-it('converts boolean default state to `int`', function (): void {
-    $buttons = ToggleButtons::make('active')
-        ->boolean()
-        ->default(true);
-
-    expect($buttons->getDefaultState())->toBe(1);
-
-    $buttons->default(false);
-
-    expect($buttons->getDefaultState())->toBe(0);
-});
-
-it('passes through non-boolean `getDefaultState()` unchanged', function (): void {
-    $buttons = ToggleButtons::make('status')
-        ->options(['a' => 'A'])
-        ->default('a');
-
-    expect($buttons->getDefaultState())->toBe('a');
-});
-
-it('returns `isMultiple()` from `hasInValidationOnMultipleValues()`', function (): void {
-    $single = ToggleButtons::make('status')->options(['a' => 'A']);
-    $multi = ToggleButtons::make('tags')->options(['a' => 'A'])->multiple();
-
-    expect($single->hasInValidationOnMultipleValues())->toBeFalse();
-    expect($multi->hasInValidationOnMultipleValues())->toBeTrue();
-});
-
-it('can set custom labels for `boolean()`', function (): void {
-    $buttons = ToggleButtons::make('active')
-        ->boolean(trueLabel: 'Enabled', falseLabel: 'Disabled');
-
-    $options = $buttons->getOptions();
-
-    expect($options[1])->toBe('Enabled');
-    expect($options[0])->toBe('Disabled');
-});
-
-it('returns fluent `$this` from `boolean()`', function (): void {
-    $buttons = ToggleButtons::make('active');
-
-    $result = $buttons->boolean();
-
-    expect($result)->toBe($buttons);
-});
-
-it('sets colors and icons via `boolean()`', function (): void {
-    $buttons = ToggleButtons::make('active')->boolean();
-
-    $colors = $buttons->getColors();
-    $icons = $buttons->getIcons();
-
-    expect($colors[1])->toBe('success');
-    expect($colors[0])->toBe('danger');
-    expect($icons[1])->not->toBeNull();
-    expect($icons[0])->not->toBeNull();
-});
-
-it('returns only enabled option keys from `getInValidationRuleValues()`', function (): void {
-    $buttons = ToggleButtons::make('status')
-        ->options([
-            'active' => 'Active',
-            'inactive' => 'Inactive',
-            'archived' => 'Archived',
-        ])
-        ->disableOptionWhen(static fn (string $value): bool => $value === 'archived');
-
-    $validValues = $buttons->getInValidationRuleValues();
-
-    expect($validValues)->toBe(['active', 'inactive']);
-});
-
-describe('rendering', function (): void {
-    it('can render with `inline()`', function (): void {
-        livewire(RenderToggleButtonsWithInline::class)->assertSuccessful();
-    });
-
-    it('can render with `inline()` set via `Closure`', function (): void {
-        livewire(RenderToggleButtonsWithClosureInline::class)->assertSuccessful();
-    });
-
-    it('can render with `hiddenButtonLabels()`', function (): void {
-        livewire(RenderToggleButtonsWithHiddenLabels::class)->assertSuccessful();
-    });
-
-    it('can render with `hiddenButtonLabels()` set via `Closure`', function (): void {
-        livewire(RenderToggleButtonsWithClosureHiddenLabels::class)->assertSuccessful();
-    });
-
-    it('can render with `multiple()` set via `Closure`', function (): void {
-        livewire(RenderToggleButtonsWithClosureMultiple::class)->assertSuccessful();
-    });
-
-    it('can render with `grouped()` view', function (): void {
-        livewire(RenderToggleButtonsWithGrouped::class)->assertSuccessful();
-    });
-
-    it('can render with `boolean()` custom labels', function (): void {
-        livewire(RenderToggleButtonsWithBooleanCustomLabels::class)
-            ->assertSuccessful()
-            ->assertSeeHtml('Enabled')
-            ->assertSeeHtml('Disabled');
-    });
-
-    it('can render with `boolean()` colors and icons', function (): void {
-        livewire(RenderToggleButtonsWithBooleanColorsIcons::class)->assertSuccessful();
-    });
-
-    it('can render with `disableOptionWhen()`', function (): void {
-        livewire(RenderToggleButtonsWithDisabledOption::class)
-            ->assertSuccessful()
-            ->assertSeeHtml('Active')
-            ->assertSeeHtml('Archived');
-    });
-
-    it('emits `allowHTML: true` when an option tooltip is `Htmlable`', function (): void {
-        Schema::make($livewire = Livewire::make())
-            ->statePath('data')
-            ->components([
-                $field = ToggleButtons::make('status')
-                    ->options(['active' => 'Active'])
-                    ->tooltips(['active' => new HtmlString('<strong>Tip</strong>')]),
-            ])
-            ->fill();
-
-        $html = $field->toHtml();
-
-        expect($html)->toContain('allowHTML: true');
-    });
-
-    it('emits `allowHTML: false` when an option tooltip is a plain string', function (): void {
-        Schema::make($livewire = Livewire::make())
-            ->statePath('data')
-            ->components([
-                $field = ToggleButtons::make('status')
-                    ->options(['active' => 'Active'])
-                    ->tooltips(['active' => 'Plain tooltip']),
-            ])
-            ->fill();
-
-        $html = $field->toHtml();
-
-        expect($html)->toContain('allowHTML: false');
-    });
-});
-
-it('can render `ToggleButtons` in the browser', function (): void {
-    retry(10, function (): void {
-        $this->actingAs(User::factory()->create());
-
-        visit('/toggle-buttons-test')
-            ->assertSee('Test ToggleButtons')
-            ->assertNoSmoke()
-            ->assertNoAccessibilityIssues();
-
-        visit('/toggle-buttons-test')
-            ->inDarkMode()
-            ->assertNoAccessibilityIssues();
-    });
-});
-
 class RenderToggleButtonsWithInline extends Livewire
 {
     public function form(Schema $form): Schema
@@ -474,6 +752,46 @@ class RenderToggleButtonsWithGrouped extends Livewire
     {
         return $form->schema([
             ToggleButtons::make('status')->options(['a' => 'A', 'b' => 'B'])->grouped(),
+        ])->statePath('data');
+    }
+}
+
+class RenderToggleButtonsWithFullWidth extends Livewire
+{
+    public function form(Schema $form): Schema
+    {
+        return $form->schema([
+            ToggleButtons::make('status')->options(['a' => 'A', 'b' => 'B'])->fullWidth(),
+        ])->statePath('data');
+    }
+}
+
+class RenderToggleButtonsWithClosureFullWidth extends Livewire
+{
+    public function form(Schema $form): Schema
+    {
+        return $form->schema([
+            ToggleButtons::make('status')->options(['a' => 'A'])->fullWidth(static fn (): bool => true),
+        ])->statePath('data');
+    }
+}
+
+class RenderToggleButtonsWithFullWidthInline extends Livewire
+{
+    public function form(Schema $form): Schema
+    {
+        return $form->schema([
+            ToggleButtons::make('status')->options(['a' => 'A', 'b' => 'B'])->inline()->fullWidth(),
+        ])->statePath('data');
+    }
+}
+
+class RenderToggleButtonsWithFullWidthGrouped extends Livewire
+{
+    public function form(Schema $form): Schema
+    {
+        return $form->schema([
+            ToggleButtons::make('status')->options(['a' => 'A', 'b' => 'B'])->grouped()->fullWidth(),
         ])->statePath('data');
     }
 }

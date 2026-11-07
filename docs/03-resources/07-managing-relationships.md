@@ -1,9 +1,6 @@
 ---
 title: Managing relationships
 ---
-import AutoScreenshot from "@components/AutoScreenshot.astro"
-import Aside from "@components/Aside.astro"
-import UtilityInjection from "@components/UtilityInjection.astro"
 
 ## Choosing the right tool for the job
 
@@ -23,7 +20,7 @@ Filament provides many ways to manage relationships in the app. Which feature yo
     These are compatible with `BelongsTo`, `MorphTo` and `BelongsToMany` relationships.
 </Aside>
 
-Using a [select](../forms/select#integrating-with-an-eloquent-relationship), users will be able to choose from a list of existing records. You may also [add a button that allows you to create a new record inside a modal](../forms/select#creating-new-records), without leaving the page.
+Using a [select](../forms/select#integrating-with-an-eloquent-relationship), users will be able to choose from a list of existing records. You may also [add a button that allows you to create a new record inside a modal](../forms/select#creating-a-new-option-in-a-modal), without leaving the page.
 
 When using a `BelongsToMany` relationship with a select, you'll be able to select multiple options, not just one. Records will be automatically added to your pivot table when you submit the form. If you wish, you can swap out the multi-select dropdown with a simple [checkbox list](../forms/checkbox-list#integrating-with-an-eloquent-relationship). Both components work in the same way.
 
@@ -76,19 +73,19 @@ php artisan make:filament-relation-manager CategoryResource posts title
 - `posts` is the name of the relationship you want to manage.
 - `title` is the name of the attribute that will be used to identify posts.
 
-This will create a `CategoryResource/RelationManagers/PostsRelationManager.php` file. This contains a class where you are able to define a [form](overview#resource-forms) and [table](overview#resource-tables) for your relation manager:
+By default, this will create a `Categories/RelationManagers/PostsRelationManager.php` file in your panel's resource directory. This contains a class where you are able to define a [form](overview#resource-forms) and [table](overview#resource-tables) for your relation manager:
 
 ```php
-use Filament\Forms;
+use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Schema;
-use Filament\Tables;
+use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 
 public function form(Schema $schema): Schema
 {
     return $schema
         ->components([
-            Forms\Components\TextInput::make('title')->required(),
+            TextInput::make('title')->required(),
             // ...
         ]);
 }
@@ -97,7 +94,7 @@ public function table(Table $table): Table
 {
     return $table
         ->columns([
-            Tables\Columns\TextColumn::make('title'),
+            TextColumn::make('title'),
             // ...
         ]);
 }
@@ -116,7 +113,7 @@ public static function getRelations(): array
 
 Once a table and form have been defined for the relation manager, visit the [Edit](editing-records) or [View](viewing-records) page of your resource to see it in action.
 
-<AutoScreenshot name="panels/resources/relation-manager" alt="Relation manager" version="4.x" />
+<AutoScreenshot name="panels/resources/relation-manager" alt="Relation manager" />
 
 ### Customizing the relation manager's URL parameter
 
@@ -160,14 +157,14 @@ public function panel(Panel $panel): Panel
 For inverse relationships that do not follow Laravel's naming guidelines, you may wish to use the `inverseRelationship()` method on the table:
 
 ```php
-use Filament\Tables;
+use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 
 public function table(Table $table): Table
 {
     return $table
         ->columns([
-            Tables\Columns\TextColumn::make('title'),
+            TextColumn::make('title'),
             // ...
         ])
         ->inverseRelationship('section'); // Since the inverse related model is `Category`, this is normally `category`, not `section`.
@@ -182,7 +179,7 @@ By default, you will not be able to interact with deleted records in the relatio
 php artisan make:filament-relation-manager CategoryResource posts title --soft-deletes
 ```
 
-You can find out more about soft-deleting [here](#deleting-records).
+You can find out more about soft-deleting [here](#deleting-related-records).
 
 ## Listing related records
 
@@ -195,14 +192,15 @@ You may use any features of the [Table Builder](../tables) to customize relation
 For `BelongsToMany` and `MorphToMany` relationships, you may also add pivot table attributes. For example, if you have a `TeamsRelationManager` for your `UserResource`, and you want to add the `role` pivot attribute to the table, you can use:
 
 ```php
-use Filament\Tables;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Table;
 
 public function table(Table $table): Table
 {
     return $table
         ->columns([
-            Tables\Columns\TextColumn::make('name'),
-            Tables\Columns\TextColumn::make('role'),
+            TextColumn::make('name'),
+            TextColumn::make('role'),
         ]);
 }
 ```
@@ -216,15 +214,15 @@ Please ensure that any pivot attributes are listed in the `withPivot()` method o
 For `BelongsToMany` and `MorphToMany` relationships, you may also add pivot table attributes. For example, if you have a `TeamsRelationManager` for your `UserResource`, and you want to add the `role` pivot attribute to the create form, you can use:
 
 ```php
-use Filament\Forms;
+use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Schema;
 
 public function form(Schema $schema): Schema
 {
     return $schema
         ->components([
-            Forms\Components\TextInput::make('name')->required(),
-            Forms\Components\TextInput::make('role')->required(),
+            TextInput::make('name')->required(),
+            TextInput::make('role')->required(),
             // ...
         ]);
 }
@@ -243,15 +241,15 @@ To learn how to customize the `CreateAction`, including mutating the form data, 
 For `BelongsToMany` and `MorphToMany` relationships, you may also edit pivot table attributes. For example, if you have a `TeamsRelationManager` for your `UserResource`, and you want to add the `role` pivot attribute to the edit form, you can use:
 
 ```php
-use Filament\Forms;
+use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Schema;
 
 public function form(Schema $schema): Schema
 {
     return $schema
         ->components([
-            Forms\Components\TextInput::make('name')->required(),
-            Forms\Components\TextInput::make('role')->required(),
+            TextInput::make('name')->required(),
+            TextInput::make('role')->required(),
             // ...
         ]);
 }
@@ -305,10 +303,10 @@ public function table(Table $table): Table
 }
 ```
 
-<AutoScreenshot name="panels/resources/relation-manager-attach" alt="Relation manager attach modal" version="4.x" />
+<AutoScreenshot name="panels/resources/relation-manager-attach" alt="Relation manager attach modal" />
 
 <Aside variant="danger">
-    `AssociateAction`, `AttachAction`, `DetachAction`, and `DissociateAction` (and their bulk variants) only check the relation manager's `isReadOnly()` state — they do not consult any model policy method by default. Bulk delete, force-delete, and restore actions use the `deleteAny()`, `forceDeleteAny()`, and `restoreAny()` policy methods (one call for the whole batch) for performance. If you need per-record authorization on a bulk action, call [`authorizeIndividualRecords('ability')`](../actions/overview#authorizing-individual-records-of-a-bulk-action) on it, accepting the extra query cost.
+    `AssociateAction`, `AttachAction`, `DetachAction`, and `DissociateAction` (and their bulk variants) only check the relation manager's `isReadOnly()` state — they do not consult any model policy method by default. Bulk delete, force-delete, and restore actions use the `deleteAny()`, `forceDeleteAny()`, and `restoreAny()` policy methods (one call for the whole batch) for performance. If you need per-record authorization on a bulk action, call [`authorizeIndividualRecords('ability')`](../tables/actions#authorizing-bulk-actions) on it, accepting the extra query cost.
 </Aside>
 
 ### Preloading the attachment modal select options
@@ -328,12 +326,12 @@ When you attach record with the `Attach` button, you may wish to define a custom
 
 ```php
 use Filament\Actions\AttachAction;
-use Filament\Forms;
+use Filament\Forms\Components\TextInput;
 
 AttachAction::make()
     ->schema(fn (AttachAction $action): array => [
         $action->getRecordSelect(),
-        Forms\Components\TextInput::make('role')->required(),
+        TextInput::make('role')->required(),
     ])
 ```
 
@@ -736,7 +734,7 @@ $this->getOwnerRecord()
 However, if you're inside a `static` method like `form()` or `table()`, `$this` isn't accessible. So, you may [use a callback](../forms/overview#field-utility-injection) to access the `$livewire` instance:
 
 ```php
-use Filament\Forms;
+use Filament\Forms\Components\Select;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 
@@ -744,7 +742,7 @@ public function form(Schema $schema): Schema
 {
     return $schema
         ->components([
-            Forms\Components\Select::make('store_id')
+            Select::make('store_id')
                 ->options(function (RelationManager $livewire): array {
                     return $livewire->getOwnerRecord()->stores()
                         ->pluck('name', 'id')
@@ -756,6 +754,10 @@ public function form(Schema $schema): Schema
 ```
 
 All methods in Filament accept a callback which you can access `$livewire->ownerRecord` in.
+
+<Aside variant="warning">
+    On every Livewire request, Filament runs `canViewForRecord()`, but leaves `$ownerRecord` to Livewire's native model restoration. It does not reapply the model's global scopes or the parent resource's query, or automatically run the owner record's policy. A request to the relation manager does not reauthorize the parent page. Enforce tenant, ownership, and other owner-record restrictions in `canViewForRecord()`, using your application's authoritative query and policy. See [Eloquent model restoration in Livewire](../advanced/security#understanding-eloquent-model-restoration-in-livewire) for more information.
+</Aside>
 
 ## Grouping relation managers
 
@@ -778,7 +780,7 @@ public static function getRelations(): array
 }
 ```
 
-<AutoScreenshot name="panels/resources/relation-manager-grouped" alt="Relation managers with grouped tabs" version="4.x" />
+<AutoScreenshot name="panels/resources/relation-manager-grouped" alt="Relation managers with grouped tabs" />
 
 ## Conditionally showing relation managers
 
@@ -795,6 +797,89 @@ public static function canViewForRecord(Model $ownerRecord, string $pageClass): 
 }
 ```
 
+Filament also checks `canViewForRecord()` before a relation manager's `mount()` method runs, including when a lazy relation manager loads, and before subsequent Livewire updates. If access is denied, the request returns a 403 response. Resource pages filter out denied relation managers before mounting them, including managers in relation groups.
+
+Keep sensitive work out of the relation manager's `boot()` and lazy `placeholder()` methods, which can run before this authorization check. If you need sensitive work in these methods, authorize it separately.
+
+## Customizing relation manager tabs
+
+To customize the tab for a relation manager, override the `getTabComponent()` method, and use any [Tab](../schemas/tabs) customization methods:
+
+```php
+use Filament\Schemas\Components\Tabs\Tab;
+use Illuminate\Database\Eloquent\Model;
+
+public static function getTabComponent(Model $ownerRecord, string $pageClass): Tab
+{
+    return Tab::make('Blog posts')
+        ->badge($ownerRecord->posts()->count())
+        ->badgeColor('info')
+        ->badgeTooltip('The number of posts in this category')
+        ->icon('heroicon-m-document-text');
+}
+```
+
+<UtilityInjection set="schemaComponents" extras="Badge;;?string;;$badge;;The evaluated value of the badge.">As well as allowing static values, the `badgeColor()` and `badgeTooltip()` methods also accept functions to dynamically calculate them. You can inject various utilities into the functions as parameters.</UtilityInjection>
+
+If you are using a [relation group](#grouping-relation-managers), you can use the `tab()` method:
+
+```php
+use Filament\Resources\RelationManagers\RelationGroup;
+use Filament\Schemas\Components\Tabs\Tab;
+use Illuminate\Database\Eloquent\Model;
+
+RelationGroup::make('Contacts', [
+    // ...
+])
+    ->tab(fn (Model $ownerRecord): Tab => Tab::make('Blog posts')
+        ->badge($ownerRecord->posts()->count())
+        ->badgeColor('info')
+        ->badgeTooltip('The number of posts in this category')
+        ->icon('heroicon-m-document-text'));
+```
+
+<UtilityInjection set="schemaComponents" extras="Badge;;?string;;$badge;;The evaluated value of the badge.">As well as allowing static values, the `badgeColor()` and `badgeTooltip()` methods also accept functions to dynamically calculate them. You can inject various utilities into the functions as parameters.</UtilityInjection>
+
+### Lazy loading relation manager tab badges
+
+If `getBadge()` runs an expensive query, you may lazy load the badge asynchronously after the page renders by setting the `$isBadgeLazyLoaded` property to `true`:
+
+```php
+use Illuminate\Database\Eloquent\Model;
+
+protected static ?bool $isBadgeLazyLoaded = true;
+
+public static function getBadge(Model $ownerRecord, string $pageClass): ?string
+{
+    $count = $ownerRecord->tickets()->count();
+
+    return $count > 0 ? (string) $count : null;
+}
+```
+
+Alternatively, you may override the `isBadgeLazyLoaded()` method to define dynamic behavior:
+
+```php
+use Illuminate\Database\Eloquent\Model;
+
+public static function isBadgeLazyLoaded(Model $ownerRecord, string $pageClass): bool
+{
+    return FeatureFlag::active();
+}
+```
+
+If you are using a [relation group](#grouping-relation-managers), use the fluent `lazyLoadedBadge()` method:
+
+```php
+use Filament\Resources\RelationManagers\RelationGroup;
+
+RelationGroup::make('Contacts', [
+    // ...
+])
+    ->badge(fn (Model $ownerRecord): string => (string) $ownerRecord->contacts()->count())
+    ->lazyLoadedBadge();
+```
+
 ## Combining the relation manager tabs with the form
 
 On the Edit or View page class, override the `hasCombinedRelationManagerTabsWithContent()` method:
@@ -806,7 +891,7 @@ public function hasCombinedRelationManagerTabsWithContent(): bool
 }
 ```
 
-<AutoScreenshot name="panels/resources/editing-combined-tabs" alt="Resource edit page with combined relation manager tabs" version="4.x" />
+<AutoScreenshot name="panels/resources/editing-combined-tabs" alt="Resource edit page with combined relation manager tabs" />
 
 ### Customizing the content tab
 
@@ -835,84 +920,113 @@ public function getContentTabPosition(): ?ContentTabPosition
 }
 ```
 
-## Customizing relation manager tabs
+<Aside variant="info">
+    Numeric relation manager keys are now preserved in this position. If your existing `?relation=` links used reindexed keys, update them to match the keys in `getRelations()`.
+</Aside>
 
-To customize the tab for a relation manager, override the `getTabComponent()` method, and use any [Tab](../schemas/tabs) customization methods:
+### Mixing content and relation manager tabs
+
+To add your own tabs or change their order, override `getTabComponents()` on the Edit or View page. Use `getRelationManagerTabComponent()` to place a relation manager between your content tabs:
 
 ```php
 use Filament\Schemas\Components\Tabs\Tab;
-use Illuminate\Database\Eloquent\Model;
 
-public static function getTabComponent(Model $ownerRecord, string $pageClass): Tab
+public function getTabComponents(): array
 {
-    return Tab::make('Blog posts')
-        ->badge($ownerRecord->posts()->count())
-        ->badgeColor('info')
-        ->badgeTooltip('The number of posts in this category')
-        ->icon('heroicon-m-document-text');
+    return [
+        'overview' => Tab::make('Overview')
+            ->schema([
+                // ...
+            ]),
+        'comments' => $this->getRelationManagerTabComponent('comments'),
+        '' => $this->getContentTabComponent()->label('Edit'),
+        'tags' => $this->getRelationManagerTabComponent('tags'),
+    ];
 }
 ```
 
-<UtilityInjection set="schemaComponents" version="4.x" extras="Badge;;?string;;$badge;;The evaluated value of the badge.">As well as allowing static values, the `badgeColor()` and `badgeTooltip()` methods also accept functions to dynamically calculate them. You can inject various utilities into the functions as parameters.</UtilityInjection>
-
-If you are using a [relation group](#grouping-relation-managers), you can use the `tab()` method:
+The `comments` and `tags` keys come from your resource's `getRelations()` array:
 
 ```php
-use Filament\Resources\RelationManagers\RelationGroup;
+use App\Filament\Resources\Posts\RelationManagers\CommentsRelationManager;
+use App\Filament\Resources\Posts\RelationManagers\TagsRelationManager;
+
+public static function getRelations(): array
+{
+    return [
+        'comments' => CommentsRelationManager::class,
+        'tags' => TagsRelationManager::class,
+    ];
+}
+```
+
+You can also pass numeric keys to `getRelationManagerTabComponent()`. For a [relation group](#grouping-relation-managers), this returns one tab containing its authorized managers.
+
+Generated tabs keep their usual authorization, badges, configuration, and lazy loading. The helper returns `null` for unavailable managers, so their tabs are omitted. You can customize any tab using the usual [Tab methods](../schemas/tabs), including `label()`, `icon()`, and `badge()`.
+
+The array order controls the tab order instead of `getContentTabPosition()`. Keep the empty key (`''`) for the standard form or infolist tab. Other keys are used in the URL, such as `?relation=overview`, so choose unique keys and keep existing manager keys to preserve links.
+
+<Aside variant="danger">
+    An Edit page still requires edit permission, including on read-only tabs. Use a View page for view-only access.
+</Aside>
+
+#### Including the remaining relation managers
+
+If you have built your tabs in a `$tabs` array, you can append any relation managers you have not already placed:
+
+```php
+return $tabs + $this->getRelationManagerTabComponents(except: array_keys($tabs));
+```
+
+Use the registered manager keys in `$tabs` so these managers are excluded from the remaining tabs.
+
+#### Changing the tab query string key
+
+Combined tabs use `?relation=` by default, including content tabs. To use `?tab=` instead, redeclare `$activeRelationManager` on your Edit or View page with Livewire's `Url` attribute:
+
+```php
+use Livewire\Attributes\Url;
+
+#[Url(as: 'tab')]
+public ?string $activeRelationManager = null;
+```
+
+Keep the property name unchanged. You can also set `history: true` on the attribute to navigate between tabs with the browser's back and forward buttons. Existing `?relation=` links will no longer select a tab on this page.
+
+#### Adding a separately submitted form
+
+To give a content tab its own submit handler, wrap the form in a `Form` component:
+
+```php
+use Filament\Actions\Action;
+use Filament\Schemas\Components\Actions;
+use Filament\Schemas\Components\EmbeddedSchema;
+use Filament\Schemas\Components\Form;
 use Filament\Schemas\Components\Tabs\Tab;
-use Illuminate\Database\Eloquent\Model;
 
-RelationGroup::make('Contacts', [
-    // ...
-])
-    ->tab(fn (Model $ownerRecord): Tab => Tab::make('Blog posts')
-        ->badge($ownerRecord->posts()->count())
-        ->badgeColor('info')
-        ->badgeTooltip('The number of posts in this category')
-        ->icon('heroicon-m-document-text'));
+Tab::make('Preferences')
+    ->schema([
+        Form::make([EmbeddedSchema::make('preferencesForm')])
+            ->livewireSubmitHandler('savePreferences')
+            ->footer([
+                Actions::make([
+                    Action::make('savePreferences')
+                        ->label('Save preferences')
+                        ->submit('savePreferences'),
+                ]),
+            ]),
+    ])
 ```
 
-<UtilityInjection set="schemaComponents" version="4.x" extras="Badge;;?string;;$badge;;The evaluated value of the badge.">As well as allowing static values, the `badgeColor()` and `badgeTooltip()` methods also accept functions to dynamically calculate them. You can inject various utilities into the functions as parameters.</UtilityInjection>
+Define `preferencesForm()` as a [named form](../components/form#using-multiple-forms) with its own `statePath()`. Fill it in `mount()`, after `parent::mount($record)`, and use `$this->preferencesForm->getState()` in `savePreferences()` to validate and save its data independently of the resource form.
 
-### Deferring the loading of relation manager tab badges
+<Aside variant="danger">
+    Hiding a tab does not protect its submit handler. Authorize custom saves in your application.
+</Aside>
 
-If `getBadge()` runs an expensive query, you may defer the badge so that it loads asynchronously after the page renders, by setting the `$isBadgeDeferred` property to `true`:
+#### Building a custom page layout
 
-```php
-use Illuminate\Database\Eloquent\Model;
-
-protected static bool $isBadgeDeferred = true;
-
-public static function getBadge(Model $ownerRecord, string $pageClass): ?string
-{
-    $count = $ownerRecord->tickets()->count();
-
-    return $count > 0 ? (string) $count : null;
-}
-```
-
-Alternatively, you may override the `isBadgeDeferred()` method to define dynamic behavior:
-
-```php
-use Illuminate\Database\Eloquent\Model;
-
-public static function isBadgeDeferred(Model $ownerRecord, string $pageClass): bool
-{
-    return FeatureFlag::active();
-}
-```
-
-If you are using a [relation group](#grouping-relation-managers), use the fluent `deferBadge()` method:
-
-```php
-use Filament\Resources\RelationManagers\RelationGroup;
-
-RelationGroup::make('Contacts', [
-    // ...
-])
-    ->badge(fn (Model $ownerRecord): string => (string) $ownerRecord->contacts()->count())
-    ->deferBadge();
-```
+For a different page layout, override `content()` and compose `Tabs::make()->livewireProperty('activeTab')` yourself. You can reuse the relation manager tab helpers there too, rather than embedding and configuring managers manually.
 
 ## Sharing a resource's form and table with a relation manager
 
@@ -939,7 +1053,7 @@ public function table(Table $table): Table
 If you're sharing a form component from the resource with the relation manager, you may want to hide it on the relation manager. This is especially useful if you want to hide a `Select` field for the owner record in the relation manager, since Filament will handle this for you anyway. To do this, you may use the `hiddenOn()` method, passing the name of the relation manager:
 
 ```php
-use App\Filament\Resources\Blog\Posts\PostResource\RelationManagers\CommentsRelationManager;
+use App\Filament\Resources\Blog\Posts\RelationManagers\CommentsRelationManager;
 use Filament\Forms\Components\Select;
 
 Select::make('post_id')
@@ -952,7 +1066,7 @@ Select::make('post_id')
 If you're sharing a table column from the resource with the relation manager, you may want to hide it on the relation manager. This is especially useful if you want to hide a column for the owner record in the relation manager, since this is not appropriate when the owner record is already listed above the relation manager. To do this, you may use the `hiddenOn()` method, passing the name of the relation manager:
 
 ```php
-use App\Filament\Resources\Blog\Posts\PostResource\RelationManagers\CommentsRelationManager;
+use App\Filament\Resources\Blog\Posts\RelationManagers\CommentsRelationManager;
 use Filament\Tables\Columns\TextColumn;
 
 TextColumn::make('post.title')
@@ -964,7 +1078,7 @@ TextColumn::make('post.title')
 If you're sharing a table filter from the resource with the relation manager, you may want to hide it on the relation manager. This is especially useful if you want to hide a filter for the owner record in the relation manager, since this is not appropriate when the table is already filtered by the owner record. To do this, you may use the `hiddenOn()` method, passing the name of the relation manager:
 
 ```php
-use App\Filament\Resources\Blog\Posts\PostResource\RelationManagers\CommentsRelationManager;
+use App\Filament\Resources\Blog\Posts\RelationManagers\CommentsRelationManager;
 use Filament\Tables\Filters\SelectFilter;
 
 SelectFilter::make('post')
@@ -1010,7 +1124,7 @@ public function table(Table $table): Table
 You can apply your own query constraints or [model scopes](https://laravel.com/docs/eloquent#query-scopes) that affect the entire relation manager. To do this, you can pass a function to the `modifyQueryUsing()` method of the table, inside which you can customize the query:
 
 ```php
-use Filament\Tables;
+use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 
 public function table(Table $table): Table
@@ -1061,7 +1175,7 @@ public static function getTitle(Model $ownerRecord, string $pageClass): string
 The title will be reflected in the [heading of the table](../tables/overview#customizing-the-table-header), as well as the relation manager tab if there is more than one. If you want to customize the table heading independently, you can still use the `$table->heading()` method:
 
 ```php
-use Filament\Tables;
+use Filament\Tables\Table;
 
 public function table(Table $table): Table
 {
@@ -1154,14 +1268,14 @@ Now, you can customize the page in exactly the same way as a relation manager, w
 If you're using [resource sub-navigation](overview#resource-sub-navigation), you can register this page as normal in `getRecordSubNavigation()` of the resource:
 
 ```php
-use App\Filament\Resources\Customers\Pages;
+use App\Filament\Resources\Customers\Pages\ManageCustomerAddresses;
 use Filament\Resources\Pages\Page;
 
 public static function getRecordSubNavigation(Page $page): array
 {
     return $page->generateNavigationItems([
         // ...
-        Pages\ManageCustomerAddresses::class,
+        ManageCustomerAddresses::class,
     ]);
 }
 ```
@@ -1171,7 +1285,7 @@ public static function getRecordSubNavigation(Page $page): array
 When registering a relation manager in a resource, you can use the `make()` method to pass an array of [Livewire properties](https://livewire.laravel.com/docs/properties) to it:
 
 ```php
-use App\Filament\Resources\Blog\Posts\PostResource\RelationManagers\CommentsRelationManager;
+use App\Filament\Resources\Blog\Posts\RelationManagers\CommentsRelationManager;
 
 public static function getRelations(): array
 {
@@ -1187,23 +1301,42 @@ This array of properties gets mapped to [public Livewire properties](https://liv
 
 ```php
 use Filament\Resources\RelationManagers\RelationManager;
+use Livewire\Attributes\Locked;
 
 class CommentsRelationManager extends RelationManager
 {
+    #[Locked]
     public string $status;
 
     // ...
 }
 ```
 
-Now, you can access the `status` in the relation manager class using `$this->status`.
+Now, you can access the `status` in the relation manager class using `$this->status`. [`#[Locked]`](../advanced/security#protecting-server-managed-component-state) prevents client-side changes to this configuration.
 
 ## Disabling lazy loading
 
 By default, relation managers are lazy-loaded. This means that they will only be loaded when they are visible on the page.
 
-To disable this behavior, you may override the `$isLazy` property on the relation manager class:
+To disable this behavior, you may override the `$isLazyLoaded` property on the relation manager class:
 
 ```php
-protected static bool $isLazy = false;
+protected static ?bool $isLazyLoaded = false;
 ```
+
+## Opening relation manager actions from a URL
+
+Relation managers do not consume page action links by default. To explicitly target a relation manager, override `getDefaultActionUrlIdentifier()` to return a stable identifier:
+
+```php
+public function getDefaultActionUrlIdentifier(): ?string
+{
+    return 'departments';
+}
+```
+
+You can then use `?actionComponent=departments&tableAction=view&tableActionRecord=123`. Targeting does not grant access: relation manager and action authorization still apply, and the record must resolve through the manager's table query or relationship.
+
+Include the page's tab parameter to select and render that relation manager too. For example, a manually embedded manager in a content tab bound to `?tab=` can use `?tab=departments&actionComponent=departments&tableAction=view&tableActionRecord=123`.
+
+Each embedded instance needs a unique identifier. No custom relation manager Blade initializer is necessary: its table includes the shared action modals. Lazy managers initialize after they mount, and lazy tables wait until they load. See [opening an action from a URL](../actions/overview#opening-an-action-from-a-url) for arguments, custom views, and lifecycle limits.

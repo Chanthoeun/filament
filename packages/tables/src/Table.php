@@ -12,9 +12,9 @@ class Table extends ViewComponent
     use HasDefaultDataFormattingSettings;
     use HasExtraAttributes;
     use Table\Concerns\BelongsToLivewire;
+    use Table\Concerns\CanBeLazyLoaded;
     use Table\Concerns\CanBeStackedOnMobile;
     use Table\Concerns\CanBeStriped;
-    use Table\Concerns\CanDeferLoading;
     use Table\Concerns\CanGroupRecords;
     use Table\Concerns\CanPaginateRecords;
     use Table\Concerns\CanPersistInSession;
@@ -35,6 +35,8 @@ class Table extends ViewComponent
     use Table\Concerns\HasHeader;
     use Table\Concerns\HasHeaderActions;
     use Table\Concerns\HasHeadings;
+    use Table\Concerns\HasIdentifier;
+    use Table\Concerns\HasLoadingSkeleton;
     use Table\Concerns\HasQuery;
     use Table\Concerns\HasQueryStringIdentifier;
     use Table\Concerns\HasRecordAction;
@@ -54,18 +56,26 @@ class Table extends ViewComponent
     protected string $evaluationIdentifier = 'table';
 
     public const LOADING_TARGETS = [
+        'activeTab',
+        'applyTableFilters',
         'gotoPage',
         'nextPage',
         'previousPage',
         'removeTableFilter',
         'removeTableFilters',
         'reorderTable',
+        'resetTableColumnSearch',
         'resetTableFiltersForm',
+        'resetTableSearch',
+        'setPage',
         'sortTable',
         'tableColumnSearches',
         'tableFilters',
+        'tableGrouping',
         'tableRecordsPerPage',
         'tableSearch',
+        'tableSort',
+        'toggleTableReordering',
     ];
 
     final public function __construct(HasTable $livewire)

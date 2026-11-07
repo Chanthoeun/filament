@@ -1,7 +1,6 @@
 ---
 title: Modular architecture (DDD)
 ---
-import Aside from "@components/Aside.astro"
 
 ## Introduction
 
@@ -132,7 +131,7 @@ When you have multiple panels (e.g., `admin`, `app`, `portal`), you'll often wan
 
 ### Basic conditional registration
 
-To register a plugin for all panels except one:
+To register a plugin only for the `admin` panel:
 
 ```php
 namespace Modules\Alerts\Providers;

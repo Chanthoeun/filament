@@ -1,5 +1,7 @@
 <?php
 
+namespace Filament\Tests\Forms\Components\TextInput\Actions;
+
 use Filament\Forms\Components\TextInput\Actions\HidePasswordAction;
 use Filament\Tests\TestCase;
 

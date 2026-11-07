@@ -1,35 +1,5 @@
 import actions from './components/actions.js'
-
-const resolveRelativeStatePath = function (containerPath, path, isAbsolute) {
-    let containerPathCopy = containerPath
-
-    if (path.startsWith('/')) {
-        isAbsolute = true
-        path = path.slice(1)
-    }
-
-    if (isAbsolute) {
-        return path
-    }
-
-    while (path.startsWith('../')) {
-        containerPathCopy = containerPathCopy.includes('.')
-            ? containerPathCopy.slice(0, containerPathCopy.lastIndexOf('.'))
-            : null
-
-        path = path.slice(3)
-    }
-
-    if (['', null, undefined].includes(containerPathCopy)) {
-        return path
-    }
-
-    if (['', null, undefined].includes(path)) {
-        return containerPathCopy
-    }
-
-    return `${containerPathCopy}.${path}`
-}
+import schemaComponent from './components/component.js'
 
 const findClosestLivewireComponent = (el) => {
     let closestRoot = Alpine.findClosest(el, (i) => i.__livewire)
@@ -71,6 +41,20 @@ document.addEventListener(
         // Only attempt one reveal per validation burst, so a control that
         // stays concealed cannot cause an infinite retry loop.
         if (isRetryingConcealedValidation) {
+            return
+        }
+
+        // Keep visible errors available to fix before revealing another
+        // container. Read validity without dispatching more `invalid` events.
+        if (
+            Array.from(control.form?.elements ?? []).some(
+                (element) =>
+                    element.willValidate &&
+                    !element.validity.valid &&
+                    element.offsetParent !== null &&
+                    getComputedStyle(element).visibility !== 'hidden',
+            )
+        ) {
             return
         }
 
@@ -136,10 +120,6 @@ document.addEventListener('alpine:init', () => {
                 this.intersectionObserver.observe(this.$el)
             },
 
-            destroy() {
-                this.intersectionObserver?.disconnect()
-            },
-
             handleFormValidationError(event) {
                 if (event.detail.livewireId !== livewireId) {
                     return
@@ -162,17 +142,17 @@ document.addEventListener('alpine:init', () => {
                         elementToExpand = elementToExpand.parentNode
                     }
 
-                    setTimeout(
-                        () =>
-                            error
-                                .closest('[data-field-wrapper]')
-                                .scrollIntoView({
-                                    behavior: 'smooth',
-                                    block: 'start',
-                                    inline: 'start',
-                                }),
-                        200,
-                    )
+                    setTimeout(() => {
+                        if (!error.isConnected) {
+                            return
+                        }
+
+                        error.closest('[data-field-wrapper]')?.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start',
+                            inline: 'start',
+                        })
+                    }, 200)
                 })
             },
 
@@ -216,35 +196,23 @@ document.addEventListener('alpine:init', () => {
                     return state !== old
                 }
             },
+
+            destroy() {
+                this.intersectionObserver?.disconnect()
+            },
         }),
     )
 
-    window.Alpine.data(
-        'filamentSchemaComponent',
-        ({ path, containerPath, $wire }) => ({
-            $statePath: path,
-            $get: (path, isAbsolute) => {
-                return $wire.$get(
-                    resolveRelativeStatePath(containerPath, path, isAbsolute),
-                )
-            },
-            $set: (path, state, isAbsolute, isLive = false) => {
-                return $wire.$set(
-                    resolveRelativeStatePath(containerPath, path, isAbsolute),
-                    state,
-                    isLive,
-                )
-            },
-            get $state() {
-                return $wire.$get(path)
-            },
-        }),
-    )
+    window.Alpine.data('filamentSchemaComponent', schemaComponent)
 
     window.Alpine.data('filamentActionsSchemaComponent', actions)
 
     Livewire.hook('commit', ({ component, commit, respond, succeed, fail }) => {
         succeed(({ snapshot, effects }) => {
+            if (!component.el.isConnected) {
+                return
+            }
+
             effects.dispatches?.forEach((dispatch) => {
                 if (!dispatch.params?.awaitSchemaComponent) {
                     return
@@ -264,16 +232,21 @@ document.addEventListener('alpine:init', () => {
                     throw `Multiple schema components found with key [${dispatch.params.awaitSchemaComponent}].`
                 }
 
-                window.addEventListener(
-                    `schema-component-${component.id}-${dispatch.params.awaitSchemaComponent}-loaded`,
-                    () => {
-                        window.dispatchEvent(
-                            new CustomEvent(dispatch.name, {
-                                detail: dispatch.params,
-                            }),
-                        )
-                    },
-                    { once: true },
+                const loadedEvent = `schema-component-${component.id}-${dispatch.params.awaitSchemaComponent}-loaded`
+                const dispatchWhenLoaded = () => {
+                    window.dispatchEvent(
+                        new CustomEvent(dispatch.name, {
+                            detail: dispatch.params,
+                        }),
+                    )
+                }
+
+                window.addEventListener(loadedEvent, dispatchWhenLoaded, {
+                    once: true,
+                })
+
+                component.addCleanup(() =>
+                    window.removeEventListener(loadedEvent, dispatchWhenLoaded),
                 )
             })
         })

@@ -140,6 +140,22 @@ class ActionsDemo extends Component implements HasActions, HasSchemas
             ->action(fn () => null);
     }
 
+    public function modalEyebrowAction(): Action
+    {
+        return Action::make('modalEyebrow')
+            ->label('Edit post')
+            ->modalEyebrow('Edit post')
+            ->modalHeading('Getting started with Filament')
+            ->modalDescription('Update the details of your post before publishing it.')
+            ->modalSubmitActionLabel('Save changes')
+            ->schema([
+                TextInput::make('title')
+                    ->default('Getting started with Filament')
+                    ->required(),
+            ])
+            ->action(fn () => null);
+    }
+
     public function modalIconAction(): Action
     {
         return Action::make('modalIcon')
@@ -344,7 +360,7 @@ class ActionsDemo extends Component implements HasActions, HasSchemas
                 'title' => '10 Tips for Better Laravel Performance',
                 'content' => 'In this article, we explore proven strategies for optimizing your Laravel applications, from query optimization to caching techniques.',
             ])
-            ->disabledForm()
+            ->disabledSchema()
             ->modalSubmitActionLabel('Approve')
             ->action(fn () => null);
     }

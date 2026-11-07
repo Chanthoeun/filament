@@ -16,7 +16,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\Relation;
 
+use function Filament\Support\apply_search_constraint;
 use function Filament\Support\generate_search_column_expression;
+use function Filament\Support\generate_search_pattern;
 use function Filament\Support\generate_search_term_expression;
 
 class AssociateAction extends Action
@@ -85,7 +87,9 @@ class AssociateAction extends Action
 
             $record = $relationshipQuery->find($data['recordId']);
 
-            foreach (($this->isMultiple ? $record : [$record]) as $record) {
+            $hasFailed = false;
+
+            foreach (($this->isMultiple() ? $record : [$record]) as $record) {
                 if (! $record instanceof Model) {
                     continue;
                 }
@@ -95,13 +99,24 @@ class AssociateAction extends Action
                 /** @var BelongsTo $inverseRelationship */
                 $inverseRelationship = $table->getInverseRelationshipFor($record);
 
-                $this->process(function () use ($inverseRelationship, $record, $relationship): void {
+                $result = $this->process(function () use ($inverseRelationship, $record, $relationship): bool {
                     $inverseRelationship->associate($relationship->getParent());
-                    $record->save();
+
+                    return $record->save();
                 }, [
                     'inverseRelationship' => $inverseRelationship,
                     'relationship' => $relationship,
                 ]);
+
+                if ($result === false) {
+                    $hasFailed = true;
+                }
+            }
+
+            if ($hasFailed) {
+                $this->failure();
+
+                return;
             }
 
             if ($arguments['another'] ?? false) {
@@ -230,18 +245,20 @@ class AssociateAction extends Action
                 $isForcedCaseInsensitive = $this->isSearchForcedCaseInsensitive();
 
                 $search = generate_search_term_expression($search, $isForcedCaseInsensitive, $databaseConnection);
+                $searchPattern = generate_search_pattern($search, hasLeadingWildcard: true, hasTrailingWildcard: true);
                 $searchColumns ??= [$titleAttribute];
 
                 $isFirst = true;
 
-                $relationshipQuery->where(function (Builder $query) use ($databaseConnection, $isFirst, $isForcedCaseInsensitive, $searchColumns, $search): Builder {
+                $relationshipQuery->where(function (Builder $query) use ($databaseConnection, $isFirst, $isForcedCaseInsensitive, $searchColumns, $searchPattern): Builder {
                     foreach ($searchColumns as $searchColumn) {
                         $whereClause = $isFirst ? 'where' : 'orWhere';
 
-                        $query->{$whereClause}(
+                        apply_search_constraint(
+                            $query,
                             generate_search_column_expression($query->qualifyColumn($searchColumn), $isForcedCaseInsensitive, $databaseConnection),
-                            'like',
-                            "%{$search}%",
+                            $searchPattern,
+                            ($whereClause === 'where') ? 'and' : 'or',
                         );
 
                         $isFirst = false;
@@ -254,10 +271,10 @@ class AssociateAction extends Action
             $relationCountHash = $relationship->getRelationCountHash(incrementJoinCount: false);
 
             if ($relationship instanceof MorphMany) {
-                $relationshipQuery->whereNotMorphedTo($table->getInverseRelationship(), $relationship->getParent());
+                $relationshipQuery->whereNotMorphedTo($table->getInverseRelationshipName(), $relationship->getParent());
             } else {
                 $relationshipQuery
-                    ->whereDoesntHave($table->getInverseRelationship(), fn (Builder $query): Builder => $query->where(
+                    ->whereDoesntHave($table->getInverseRelationshipName(), fn (Builder $query): Builder => $query->where(
                         // https://github.com/filamentphp/filament/issues/8067
                         $relationship->getParent()->getTable() === $relationship->getRelated()->getTable() ?
                             "{$relationCountHash}.{$relationship->getParent()->getKeyName()}" :
@@ -277,6 +294,7 @@ class AssociateAction extends Action
 
                 return $relationshipQuery
                     ->pluck($titleAttribute, $relationship->getModel()->getQualifiedKeyName())
+                    ->map(fn (mixed $title): mixed => $this->hasCustomRecordTitleAttribute() ? $title : $this->formatRecordTitle($title))
                     ->all();
             }
 

@@ -12,6 +12,8 @@ use Filament\Schemas\Components\Contracts\ExposesStateToActionData;
 use Filament\Schemas\Concerns\InteractsWithSchemas;
 use Filament\Schemas\Contracts\HasSchemas;
 use Filament\Schemas\Schema;
+use Filament\Support\Components\Attributes\Exposed;
+use Filament\Support\Components\Attributes\Unexposed;
 use Filament\Support\Exceptions\Cancel;
 use Filament\Support\Exceptions\Halt;
 use Filament\Support\Livewire\Partials\PartialsComponentHook;
@@ -21,6 +23,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Arr;
 use Illuminate\Validation\ValidationException;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
 use ReflectionMethod;
 use ReflectionNamedType;
@@ -46,37 +49,54 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
      * @var mixed
      */
     #[Url(as: 'action')]
+    #[Locked]
     public $defaultAction = null;
 
     /**
      * @var mixed
      */
     #[Url(as: 'actionArguments')]
+    #[Locked]
     public $defaultActionArguments = null;
 
     /**
      * @var mixed
      */
     #[Url(as: 'actionContext')]
+    #[Locked]
     public $defaultActionContext = null;
 
     /**
      * @var mixed
      */
     #[Url(as: 'tableAction')]
+    #[Locked]
     public $defaultTableAction = null;
 
     /**
      * @var mixed
      */
     #[Url(as: 'tableActionRecord')]
+    #[Locked]
     public $defaultTableActionRecord = null;
 
     /**
      * @var mixed
      */
     #[Url(as: 'tableActionArguments')]
+    #[Locked]
     public $defaultTableActionArguments = null;
+
+    /** @var mixed */
+    #[Url(as: 'actionComponent')]
+    #[Locked]
+    public $defaultActionComponent = null;
+
+    #[Locked]
+    public bool $hasDefaultActionMounted = false;
+
+    #[Locked]
+    public bool $hasDefaultTableActionMounted = false;
 
     /**
      * @var array<string, Action>
@@ -90,6 +110,82 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
 
     protected bool $hasActionsModalRendered = false;
 
+    #[Unexposed]
+    public function getDefaultActionUrlIdentifier(): ?string
+    {
+        return null;
+    }
+
+    protected function getDefaultActionUrlTarget(): mixed
+    {
+        return $this->defaultActionComponent;
+    }
+
+    protected function isDefaultActionUrlTarget(): bool
+    {
+        $identifier = $this->getDefaultActionUrlIdentifier();
+        $target = $this->getDefaultActionUrlTarget();
+
+        return filled($identifier) && is_scalar($target) && ((string) $target === $identifier);
+    }
+
+    #[Unexposed]
+    public function shouldMountDefaultActions(): bool
+    {
+        if (! $this->isDefaultActionUrlTarget()) {
+            return false;
+        }
+
+        if ((! $this->hasDefaultTableActionMounted) && is_scalar($this->defaultTableAction) && filled($this->defaultTableAction) && ($this instanceof HasTable) && (! $this->isTableLoaded())) {
+            return false;
+        }
+
+        return ((! $this->hasDefaultActionMounted) && is_scalar($this->defaultAction) && filled($this->defaultAction))
+            || ((! $this->hasDefaultTableActionMounted) && is_scalar($this->defaultTableAction) && filled($this->defaultTableAction) && ($this instanceof HasTable) && $this->isTableLoaded());
+    }
+
+    #[Exposed]
+    public function mountDefaultActions(): void
+    {
+        if (! $this->shouldMountDefaultActions()) {
+            return;
+        }
+
+        $defaultAction = $this->defaultAction;
+        $defaultActionArguments = $this->defaultActionArguments;
+        $defaultActionContext = $this->getDefaultActionUrlContext();
+
+        if ((! $this->hasDefaultTableActionMounted) && is_scalar($this->defaultTableAction) && filled($this->defaultTableAction) && ($this instanceof HasTable) && $this->isTableLoaded()) {
+            $this->hasDefaultTableActionMounted = true;
+
+            if (($this->defaultTableActionRecord === null) || is_string($this->defaultTableActionRecord) || is_int($this->defaultTableActionRecord)) {
+                $this->mountAction(
+                    (string) $this->defaultTableAction,
+                    is_array($this->defaultTableActionArguments) ? $this->defaultTableActionArguments : [],
+                    $this->getDefaultTableActionUrlContext(),
+                );
+            }
+        }
+
+        if ((! $this->hasDefaultActionMounted) && is_scalar($defaultAction) && filled($defaultAction)) {
+            $this->hasDefaultActionMounted = true;
+
+            if (isset($defaultActionContext['schemaComponent']) && (! is_string($defaultActionContext['schemaComponent']))) {
+                return;
+            }
+
+            if (isset($defaultActionContext['recordKey']) && (! is_string($defaultActionContext['recordKey'])) && (! is_int($defaultActionContext['recordKey']))) {
+                return;
+            }
+
+            $this->mountAction(
+                (string) $defaultAction,
+                is_array($defaultActionArguments) ? $defaultActionArguments : [],
+                $defaultActionContext,
+            );
+        }
+    }
+
     /**
      * Context for the `mountAction()` call that opens the `?action=` default action on
      * page load. `mountedFromUrl` is forced on last, so a crafted `?actionContext=` value
@@ -97,6 +193,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
      *
      * @return array<string, mixed>
      */
+    #[Unexposed]
     public function getDefaultActionUrlContext(): array
     {
         return array_merge(
@@ -108,6 +205,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
     /**
      * @return array<string, mixed>
      */
+    #[Unexposed]
     public function getDefaultTableActionUrlContext(): array
     {
         return [
@@ -117,6 +215,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
         ];
     }
 
+    #[Unexposed]
     public function bootedInteractsWithActions(): void
     {
         if (filled($originallyMountedActionIndex = array_key_last($this->mountedActions))) {
@@ -137,6 +236,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
      * @param  array<string, mixed>  $arguments
      * @param  array<string, mixed>  $context
      */
+    #[Exposed]
     public function mountAction(string $name, array $arguments = [], array $context = []): mixed
     {
         $this->mountActionNestingLevel++;
@@ -267,15 +367,14 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
 
             array_pop($this->mountedActions);
 
-            while (count($this->cachedMountedActions ?? []) > count($this->mountedActions)) {
-                array_pop($this->cachedMountedActions);
-            }
+            $this->truncateCachedMountedActions();
         }
     }
 
     /**
      * @param  array<string, mixed>  $arguments
      */
+    #[Exposed]
     public function callMountedAction(array $arguments = []): mixed
     {
         $action = $this->getMountedAction();
@@ -388,7 +487,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
                 $action->arguments($originalActionArguments);
                 $action->resetData();
 
-                $this->unmountAction();
+                $this->unmountAction(cancelParentActions: false);
             }
 
             throw $exception;
@@ -430,6 +529,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
         return $result;
     }
 
+    #[Exposed]
     public function forceRender(): void
     {
         app(PartialsComponentHook::class)->forceRender($this);
@@ -463,9 +563,11 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
      * @param  array<string, mixed>  $arguments
      * @param  array<string, mixed>  $context
      */
+    #[Exposed]
     public function replaceMountedAction(string $name, array $arguments = [], array $context = []): void
     {
         $this->mountedActions = [];
+        $this->truncateCachedMountedActions();
         $this->cachedMountedActions = null;
 
         $this->forgetCachedMountedActionSchemas();
@@ -486,6 +588,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
         }
     }
 
+    #[Unexposed]
     public function cacheAction(Action $action): Action
     {
         $action->livewire($this);
@@ -504,6 +607,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
         ];
     }
 
+    #[Unexposed]
     public function mountedActionShouldOpenModal(?Action $mountedAction = null): bool
     {
         return ($mountedAction ?? $this->getMountedAction())->shouldOpenModal(
@@ -511,6 +615,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
         );
     }
 
+    #[Unexposed]
     public function mountedActionHasSchema(?Action $mountedAction = null): bool
     {
         return (bool) count($this->getMountedActionSchema(mountedAction: $mountedAction)?->getComponents() ?? []);
@@ -519,6 +624,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
     /**
      * @deprecated Use `mountedActionHasSchema()` instead.
      */
+    #[Unexposed]
     public function mountedActionHasForm(?Action $mountedAction = null): bool
     {
         return $this->mountedActionHasSchema($mountedAction);
@@ -527,6 +633,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
     /**
      * @return array<Action>
      */
+    #[Unexposed]
     public function getMountedActions(): array
     {
         if (blank($this->mountedActions ?? [])) {
@@ -540,6 +647,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
         return $this->cacheMountedActions($this->mountedActions);
     }
 
+    #[Unexposed]
     public function cacheTraitActions(): void
     {
         foreach (class_uses_recursive($class = static::class) as $trait) {
@@ -554,6 +662,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
         }
     }
 
+    #[Unexposed]
     public function getMountedAction(?int $actionNestingIndex = null): ?Action
     {
         if (! count($this->mountedActions ?? [])) {
@@ -571,6 +680,14 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
         );
 
         return Arr::last($this->cachedMountedActions);
+    }
+
+    #[Unexposed]
+    public function isActionMounted(Action $action): bool
+    {
+        $actionNestingIndex = $action->getNestingIndex();
+
+        return ($actionNestingIndex !== null) && (($this->cachedMountedActions[$actionNestingIndex] ?? null) === $action);
     }
 
     /**
@@ -610,6 +727,8 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
             if (! $resolvedAction) {
                 continue;
             }
+
+            $resolvedAction->mountedParentAction(Arr::last($resolvedActions));
 
             if (filled($action['arguments'] ?? [])) {
                 $resolvedAction->mergeArguments($action['arguments']);
@@ -752,6 +871,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
     /**
      * @param  string | array<string | array<string, mixed>>  $actions
      */
+    #[Unexposed]
     public function getAction(string | array $actions, bool $isMounting = true): ?Action
     {
         $actions = array_map(
@@ -762,6 +882,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
         return Arr::last($this->resolveActions($actions, $isMounting));
     }
 
+    #[Unexposed]
     public function getMountedActionSchemaName(): ?string
     {
         if (empty($this->mountedActions)) {
@@ -820,6 +941,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
         return null;
     }
 
+    #[Exposed]
     public function unmountAction(bool | string | null $cancelParentActions = null): void
     {
         try {
@@ -861,9 +983,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
 
         $this->syncActionModals();
 
-        while (count($this->cachedMountedActions ?? []) > count($this->mountedActions)) {
-            array_pop($this->cachedMountedActions);
-        }
+        $this->truncateCachedMountedActions();
 
         // The schemas of the actions that have just closed, which are cached by nesting index: an
         // action mounted at one of those indexes later in this request would otherwise be handed
@@ -874,16 +994,25 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
         if (! count($this->mountedActions)) {
             $action?->clearRecordAfter();
 
-            // Setting these to `null` creates a bug where the properties are
-            // actually set to `'null'` strings and remain in the URL.
-            $this->defaultAction = [];
-            $this->defaultActionArguments = [];
-            $this->defaultActionContext = [];
+            if ($this->isDefaultActionUrlTarget()) {
+                // Setting these to `null` creates a bug where the properties are
+                // actually set to `'null'` strings and remain in the URL.
+                $this->defaultAction = [];
+                $this->defaultActionArguments = [];
+                $this->defaultActionContext = [];
+            }
 
             return;
         }
 
         $this->resetErrorBag();
+    }
+
+    protected function truncateCachedMountedActions(): void
+    {
+        while (count($this->cachedMountedActions ?? []) > count($this->mountedActions)) {
+            array_pop($this->cachedMountedActions)->mountedParentAction(null);
+        }
     }
 
     protected function syncActionModals(): void
@@ -896,6 +1025,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
         );
     }
 
+    #[Unexposed]
     public function getOriginallyMountedActionIndex(): ?int
     {
         return $this->originallyMountedActionIndex;
@@ -904,6 +1034,7 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
     /**
      * @param  array<string, mixed>  $arguments
      */
+    #[Unexposed]
     public function mergeMountedActionArguments(array $arguments): void
     {
         $this->mountedActions[array_key_last($this->mountedActions)]['arguments'] = array_merge(
@@ -914,11 +1045,13 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
         $this->getMountedAction()->mergeArguments($arguments);
     }
 
+    #[Unexposed]
     public function getDefaultActionRecord(Action $action): ?Model
     {
         return null;
     }
 
+    #[Unexposed]
     public function getDefaultActionRecordTitle(Action $action): ?string
     {
         return null;
@@ -927,46 +1060,55 @@ trait InteractsWithActions /** @phpstan-ignore trait.unused */
     /**
      * @return ?class-string<Model>
      */
+    #[Unexposed]
     public function getDefaultActionModel(Action $action): ?string
     {
         return null;
     }
 
+    #[Unexposed]
     public function getDefaultActionModelLabel(Action $action): ?string
     {
         return null;
     }
 
+    #[Unexposed]
     public function getDefaultActionUrl(Action $action): ?string
     {
         return null;
     }
 
+    #[Unexposed]
     public function getDefaultActionSuccessRedirectUrl(Action $action): ?string
     {
         return null;
     }
 
+    #[Unexposed]
     public function getDefaultActionFailureRedirectUrl(Action $action): ?string
     {
         return null;
     }
 
+    #[Unexposed]
     public function getDefaultActionRelationship(Action $action): ?Relation
     {
         return null;
     }
 
+    #[Unexposed]
     public function getDefaultActionSchemaResolver(Action $action): ?Closure
     {
         return null;
     }
 
+    #[Unexposed]
     public function getDefaultActionAuthorizationResponse(Action $action): ?Response
     {
         return null;
     }
 
+    #[Unexposed]
     public function getDefaultActionIndividualRecordAuthorizationResponseResolver(Action $action): ?Closure
     {
         return null;

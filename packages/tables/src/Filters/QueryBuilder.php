@@ -4,6 +4,7 @@ namespace Filament\Tables\Filters;
 
 use Closure;
 use Filament\Forms\Components\Repeater;
+use Filament\QueryBuilder\Concerns\HasConstraints;
 use Filament\QueryBuilder\Constraints\Constraint;
 use Filament\QueryBuilder\Constraints\Operators\Operator;
 use Filament\QueryBuilder\Forms\Components\RuleBuilder;
@@ -17,15 +18,14 @@ use LogicException;
 
 class QueryBuilder extends BaseFilter
 {
+    use HasConstraints;
+
     /**
      * @var array<string, ?int> | null
      */
     protected ?array $constraintPickerColumns = [];
 
     protected string | Closure | null $constraintPickerWidth = null;
-
-    /** @var array<Constraint> */
-    protected array $constraints = [];
 
     protected int | Closure | null $maxRules = null;
 
@@ -36,7 +36,7 @@ class QueryBuilder extends BaseFilter
     /**
      * @var array<string, bool>
      */
-    protected array $cachedRuleSchemaValidity = [];
+    protected array $cachedRuleFormValidity = [];
 
     protected function setUp(): void
     {
@@ -44,11 +44,11 @@ class QueryBuilder extends BaseFilter
 
         $this->label(__('filament-query-builder::query-builder.label'));
 
-        $this->schema(fn (QueryBuilder $filter): array => [
+        $this->form(fn (QueryBuilder $filter): array => [
             RuleBuilder::make('rules')
                 ->label($filter->getLabel())
                 ->hiddenLabel()
-                ->constraints($filter->getConstraints())
+                ->constraints($filter->getGroupedConstraints())
                 ->blockPickerColumns($filter->getConstraintPickerColumns())
                 ->blockPickerWidth($filter->getConstraintPickerWidth())
                 ->maxRules($filter->getMaxRules())
@@ -79,7 +79,8 @@ class QueryBuilder extends BaseFilter
                 return [];
             }
 
-            return $this->getRuleSummaries($state['rules'], $this->getRuleBuilder());
+            // The summaries describe the applied rules, so the rule builder must be resolved from the applied state too. Otherwise a rule that has been removed from the filters form without applying it has no matching block.
+            return $this->getTable()->withAppliedFiltersFormState(fn (): array => $this->getRuleSummaries($state['rules'], $this->getRuleBuilder()));
         });
 
         $this->columnSpanFull();
@@ -152,14 +153,14 @@ class QueryBuilder extends BaseFilter
 
     public function getActiveCount(): int
     {
-        $rules = $this->getFormState()['rules'];
+        $rules = $this->getState()['rules'];
 
         // Security: See the note in `query()` above — an over-limit tree is treated as no active filter here too, rather than traversing the whole tampered tree to count rules.
         if ($this->exceedsRuleLimits($rules)) {
             return 0;
         }
 
-        return $this->countRules($rules, $this->getRuleBuilder());
+        return $this->getTable()->withAppliedFiltersFormState(fn (): int => $this->countRules($rules, $this->getRuleBuilder()));
     }
 
     /**
@@ -187,7 +188,7 @@ class QueryBuilder extends BaseFilter
                 continue;
             }
 
-            if (! $this->ruleSchemaPassesValidation($ruleBuilderBlockContainer)) {
+            if (! $this->ruleFormPassesValidation($ruleBuilderBlockContainer)) {
                 continue;
             }
 
@@ -416,7 +417,7 @@ class QueryBuilder extends BaseFilter
             return $this->cachedRuleBuilder;
         }
 
-        $builder = $this->getSchema()->getComponent(fn (Component $component): bool => $component instanceof RuleBuilder);
+        $builder = $this->getForm()->getComponent(fn (Component $component): bool => $component instanceof RuleBuilder);
 
         if (! ($builder instanceof RuleBuilder)) {
             throw new LogicException('No rule builder component found.');
@@ -464,7 +465,7 @@ class QueryBuilder extends BaseFilter
             return;
         }
 
-        if (! $this->ruleSchemaPassesValidation($schema)) {
+        if (! $this->ruleFormPassesValidation($schema)) {
             return;
         }
 
@@ -491,11 +492,11 @@ class QueryBuilder extends BaseFilter
             ->inverse(null);
     }
 
-    protected function ruleSchemaPassesValidation(Schema $schema): bool
+    protected function ruleFormPassesValidation(Schema $schema): bool
     {
         $statePath = $schema->getStatePath();
 
-        return $this->cachedRuleSchemaValidity[$statePath] ??= (function () use ($schema): bool {
+        return $this->cachedRuleFormValidity[$statePath] ??= (function () use ($schema): bool {
             try {
                 $schema->validate();
 
@@ -507,19 +508,7 @@ class QueryBuilder extends BaseFilter
     }
 
     /**
-     * @param  array<Constraint>  $constraints
-     */
-    public function constraints(array $constraints): static
-    {
-        foreach ($constraints as $constraint) {
-            $this->constraints[$constraint->getName()] = $constraint;
-        }
-
-        return $this;
-    }
-
-    /**
-     * @return array<Constraint>
+     * @return array<string, Constraint>
      */
     public function getConstraints(): array
     {

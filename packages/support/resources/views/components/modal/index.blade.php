@@ -10,6 +10,7 @@
     'closeEventName' => 'close-modal',
     'closeQuietlyEventName' => 'close-modal-quietly',
     'description' => null,
+    'eyebrow' => null,
     'restoresFocus' => true,
     'extraModalWindowAttributeBag' => null,
     'extraModalOverlayAttributeBag' => null,
@@ -56,6 +57,7 @@
 
     $hasContent = ! \Filament\Support\is_slot_empty($slot);
     $hasDescription = filled($description);
+    $hasEyebrow = filled($eyebrow);
     $hasFooter = (! \Filament\Support\is_slot_empty($footer)) || (is_array($footerActions) && count($footerActions)) || (! is_array($footerActions) && (! \Filament\Support\is_slot_empty($footerActions)));
     $hasHeading = filled($heading);
     $iconHtml = ($icon || $iconAlias) ? \Filament\Support\generate_icon_html($icon, $iconAlias, size: IconSize::Large) : null;
@@ -91,6 +93,24 @@
     if ($isClickThrough) {
         $closeByClickingAway = false;
     }
+
+    // When `Escape` does not close the modal, the close button stays in the tab order as the only keyboard way to dismiss it, so the window takes the focus trap's `[autofocus]` to stop the button from being autofocused when the modal opens.
+    $isModalWindowAutofocusedByDefault = $closeButton && (! $closeByEscaping) && ($heading || $header);
+
+    $modalWindowAttributeBag = ($extraModalWindowAttributeBag ?? new FilamentComponentAttributeBag)->merge([
+        'autofocus' => $isModalWindowAutofocusedByDefault,
+    ]);
+
+    $shouldTrapFocusOnModalWindow = (! $isClickThrough)
+        && ($slideOver || (($width !== Width::Screen) && ($stickyHeader || $stickyFooter)))
+        && in_array($modalWindowAttributeBag->get('autofocus'), [false, null], true)
+        && (! $modalWindowAttributeBag->has('tabindex'));
+
+    $modalWindowAttributeBag = $modalWindowAttributeBag->merge([
+        'tabindex' => $shouldTrapFocusOnModalWindow
+            ? '0'
+            : ($isModalWindowAutofocusedByDefault ? '-1' : null),
+    ]);
 @endphp
 
 @if ($trigger)
@@ -179,11 +199,13 @@
     @endif
 
     <div
-        tabindex="-1"
+        @if (! $shouldTrapFocusOnModalWindow)
+            tabindex="-1"
+        @endif
         @if ($closeByClickingAway)
             x-on:click.self="{{ $closeEventHandler }}"
         @endif
-        @if (! $isClickThrough)
+        @if ((! $isClickThrough) && (! $shouldTrapFocusOnModalWindow))
             x-trap.noreturn{{ $autofocus ? '' : '.noautofocus' }}="isTrapActive"
         @endif
         @class([
@@ -210,12 +232,11 @@
             @if (filled($id))
                 wire:key="{{ isset($this) ? "{$this->getId()}." : '' }}modal.{{ $id }}.window"
             @endif
+            @if ($shouldTrapFocusOnModalWindow)
+                x-trap.noreturn{{ $autofocus ? '' : '.noautofocus' }}="isTrapActive"
+            @endif
             {{
-                ($extraModalWindowAttributeBag ?? new FilamentComponentAttributeBag)->merge([
-                    // When `Escape` does not close the modal, the close button stays in the tab order as the only keyboard way to dismiss it, so the window takes the focus trap's `[autofocus]` to stop the button from being autofocused when the modal opens.
-                    'autofocus' => $closeButton && (! $closeByEscaping) && ($heading || $header),
-                    'tabindex' => ($closeButton && (! $closeByEscaping) && ($heading || $header)) ? '-1' : null,
-                ])->class([
+                $modalWindowAttributeBag->class([
                     'fi-modal-window',
                     'fi-modal-window-has-close-btn' => $closeButton,
                     'fi-modal-window-has-content' => $hasContent,
@@ -234,7 +255,7 @@
                     @endif
                     @class([
                         'fi-modal-header',
-                        'fi-vertical-align-center' => $hasIcon && $hasHeading && (! $hasDescription) && in_array($alignment, [Alignment::Start, Alignment::Left]),
+                        'fi-vertical-align-center' => $hasIcon && $hasHeading && (! $hasEyebrow) && (! $hasDescription) && in_array($alignment, [Alignment::Start, Alignment::Left]),
                     ])
                 >
                     @if ($closeButton)
@@ -265,6 +286,12 @@
                         @endif
 
                         <div>
+                            @if ($hasHeading && $hasEyebrow)
+                                <p class="fi-modal-eyebrow">
+                                    {{ $eyebrow }}
+                                </p>
+                            @endif
+
                             <h2
                                 @if ($headingId)
                                     id="{{ $headingId }}"

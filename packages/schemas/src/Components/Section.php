@@ -32,6 +32,7 @@ use Filament\Support\View\Components\IconButtonComponent;
 use Filament\Support\View\Components\SectionComponent\IconComponent;
 use Filament\Support\View\SupportIconAlias;
 use Illuminate\Contracts\Support\Htmlable;
+use Illuminate\Support\Arr;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Js;
 use Illuminate\Support\Str;
@@ -61,7 +62,7 @@ class Section extends Component implements CanEntangleWithSingularRelationships,
 
     protected bool | Closure | null $isAside = null;
 
-    protected bool | Closure $isFormBefore = false;
+    protected bool | Closure $isContentBefore = false;
 
     protected ?Closure $contentSchemaExtraAttributes = null;
 
@@ -137,16 +138,32 @@ class Section extends Component implements CanEntangleWithSingularRelationships,
         return (bool) ($this->evaluate($this->isAside) ?? false);
     }
 
-    public function formBefore(bool | Closure $condition = true): static
+    public function contentBefore(bool | Closure $condition = true): static
     {
-        $this->isFormBefore = $condition;
+        $this->isContentBefore = $condition;
 
         return $this;
     }
 
+    /**
+     * @deprecated Use `contentBefore()` instead.
+     */
+    public function formBefore(bool | Closure $condition = true): static
+    {
+        return $this->contentBefore($condition);
+    }
+
+    public function isContentBefore(): bool
+    {
+        return (bool) $this->evaluate($this->isContentBefore);
+    }
+
+    /**
+     * @deprecated Use `isContentBefore()` instead.
+     */
     public function isFormBefore(): bool
     {
-        return (bool) $this->evaluate($this->isFormBefore);
+        return $this->isContentBefore();
     }
 
     /**
@@ -269,7 +286,7 @@ class Section extends Component implements CanEntangleWithSingularRelationships,
         $isCompact = $this->isCompact();
         $isContained = $this->isContained();
         $isDivided = $this->isDivided();
-        $isFormBefore = $this->isFormBefore();
+        $isContentBefore = $this->isContentBefore();
         $description = $this->getDescription();
         $footer = $this->getChildSchema(static::FOOTER_SCHEMA_KEY)?->toHtmlString();
         $heading = $this->getHeading();
@@ -303,7 +320,7 @@ class Section extends Component implements CanEntangleWithSingularRelationships,
             ->class([
                 'fi-section',
                 'fi-section-not-contained' => ! $isContained,
-                'fi-section-has-content-before' => $isFormBefore,
+                'fi-section-has-content-before' => $isContentBefore,
                 'fi-section-has-header' => $hasHeader,
                 'fi-aside' => $isAside,
                 'fi-compact' => $isCompact,
@@ -328,7 +345,11 @@ class Section extends Component implements CanEntangleWithSingularRelationships,
         $label = $this->getLabel();
         $beforeLabelSchema = $this->getChildSchema(static::BEFORE_LABEL_SCHEMA_KEY)?->toHtmlString();
         $afterLabelSchema = $this->getChildSchema(static::AFTER_LABEL_SCHEMA_KEY)?->toHtmlString();
-        $aboveContentSchema = $this->getChildSchema(static::ABOVE_CONTENT_SCHEMA_KEY)?->toHtmlString();
+
+        $aboveContentSchema = $this->getChildSchema(static::ABOVE_CONTENT_SCHEMA_KEY);
+        $hasAboveContentSchema = $this->hasChildSchemaConfiguration(static::ABOVE_CONTENT_SCHEMA_KEY) || $aboveContentSchema;
+        $aboveContentSchema = $aboveContentSchema?->toHtmlString();
+
         $belowContentSchema = $this->getChildSchema(static::BELOW_CONTENT_SCHEMA_KEY)?->toHtmlString();
 
         // Name the `<section>` as a landmark region by referencing its heading (or, failing that, its `label()`),
@@ -357,11 +378,15 @@ class Section extends Component implements CanEntangleWithSingularRelationships,
                 </div>
             <?php } ?>
 
-            <?= $aboveContentSchema?->toHtml() ?>
+            <?php if ($hasAboveContentSchema) { ?>
+                <div class="fi-sc-section-content-slot">
+                    <?= $aboveContentSchema?->toHtml() ?>
+                </div>
+            <?php } ?>
 
             <section
                 x-data="{
-                    isCollapsed: <?php if ($shouldPersistCollapsed) { ?>$persist(<?= Js::from($isCollapsed) ?>).as(`section-${<?= Js::from($collapseId) ?> ?? $el.id}-isCollapsed`)<?php } else { ?><?= Js::from($isCollapsed) ?><?php } ?>,
+                    isCollapsed: <?php if ($shouldPersistCollapsed) { ?>$persist(<?= Js::from($isCollapsed) ?>).as(`filament:section:collapsed:${<?= Js::from($collapseId) ?> ?? $el.id}`)<?php } else { ?><?= Js::from($isCollapsed) ?><?php } ?>,
                 }"
                 <?php if ($collapsible) { ?>
                     x-on:collapse-section.window="if ($event.detail.id == (<?= Js::from($collapseId) ?> ?? $el.id)) isCollapsed = true"
@@ -392,31 +417,38 @@ class Section extends Component implements CanEntangleWithSingularRelationships,
                         <?= generate_icon_html($icon, attributes: (new FilamentComponentAttributeBag)
                             ->color(IconComponent::class, $iconColor), size: $iconSize ?? IconSize::Large)?->toHtml() ?>
 
-                        <?php if ($hasHeading || $hasDescription) { ?>
-                            <div class="fi-section-header-text-ctn">
-                                <?php if ($hasHeading) { ?>
-                                    <<?= $headingTag ?>
-                                        <?php if (filled($headingId)) { ?>id="<?= e($headingId) ?>"<?php } ?>
-                                        class="fi-section-header-heading"
-                                    >
-                                        <?= e($heading) ?>
-                                    </<?= $headingTag ?>>
+                        <?php if ($hasHeading || $hasDescription || $hasAfterHeader) { ?>
+                            <div class="<?= Arr::toCssClasses([
+                                'fi-section-header-content',
+                                'fi-section-header-content-has-heading' => $hasHeading || $hasDescription,
+                            ]) ?>">
+                                <?php if ($hasHeading || $hasDescription) { ?>
+                                    <div class="fi-section-header-text-ctn">
+                                        <?php if ($hasHeading) { ?>
+                                            <<?= $headingTag ?>
+                                                <?php if (filled($headingId)) { ?>id="<?= e($headingId) ?>"<?php } ?>
+                                                class="fi-section-header-heading"
+                                            >
+                                                <?= e($heading) ?>
+                                            </<?= $headingTag ?>>
+                                        <?php } ?>
+
+                                        <?php if ($hasDescription) { ?>
+                                            <p
+                                                <?php if (filled($descriptionId)) { ?>id="<?= e($descriptionId) ?>"<?php } ?>
+                                                class="fi-section-header-description"
+                                            >
+                                                <?= e($description) ?>
+                                            </p>
+                                        <?php } ?>
+                                    </div>
                                 <?php } ?>
 
-                                <?php if ($hasDescription) { ?>
-                                    <p
-                                        <?php if (filled($descriptionId)) { ?>id="<?= e($descriptionId) ?>"<?php } ?>
-                                        class="fi-section-header-description"
-                                    >
-                                        <?= e($description) ?>
-                                    </p>
+                                <?php if ($hasAfterHeader) { ?>
+                                    <div class="fi-section-header-after-ctn">
+                                        <?= $afterHeader ?>
+                                    </div>
                                 <?php } ?>
-                            </div>
-                        <?php } ?>
-
-                        <?php if ($hasAfterHeader) { ?>
-                            <div class="fi-section-header-after-ctn">
-                                <?= $afterHeader ?>
                             </div>
                         <?php } ?>
 
@@ -425,7 +457,6 @@ class Section extends Component implements CanEntangleWithSingularRelationships,
                                 $collapseButtonAttributes = (new FilamentComponentAttributeBag)
                                     ->merge([
                                         'type' => 'button',
-                                        'wire:loading.attr' => 'disabled',
                                         'x-on:click.stop' => 'isCollapsed = ! isCollapsed',
                                         // The button only contains a decorative chevron, so give it an accessible
                                         // name. Static values cover the pre-Alpine/no-JS render; `x-bind` keeps the

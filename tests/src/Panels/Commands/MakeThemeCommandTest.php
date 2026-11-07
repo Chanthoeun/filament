@@ -1,288 +1,116 @@
 <?php
 
-use Filament\Commands\MakeThemeCommand;
-use Filament\Panel;
+use Filament\PanelRegistry;
 use Filament\Tests\TestCase;
-use Illuminate\Console\OutputStyle;
-use Illuminate\Console\View\Components\Factory as ComponentsFactory;
 use Illuminate\Filesystem\Filesystem;
-use Mockery\MockInterface;
-use Symfony\Component\Console\Input\ArrayInput;
-use Symfony\Component\Console\Output\NullOutput;
+use Illuminate\Process\PendingProcess;
+use Illuminate\Support\Facades\Process;
+use Laravel\Prompts\Prompt;
 
 uses(TestCase::class);
 
-function getFixturePath(string $type, string $name): string
-{
-    return __DIR__ . "/Fixture/MakeThemeCommandTest/{$type}/{$name}";
-}
+describe('Package manager prerequisites', function (): void {
+    beforeEach(function (): void {
+        $this->themeCommandDirectory = sys_get_temp_dir() . '/filament-theme-' . bin2hex(random_bytes(8));
 
-function getFixtureContent(string $type, string $name): string
-{
-    return file_get_contents(getFixturePath($type, $name));
-}
+        $filesystem = app(Filesystem::class);
+        $filesystem->ensureDirectoryExists($this->themeCommandDirectory . '/app/Providers/Filament');
+        $filesystem->ensureDirectoryExists($this->themeCommandDirectory . '/resources');
+        $filesystem->copy(
+            __DIR__ . '/Fixture/MakeThemeCommandTest/vite-config/standard.js',
+            $this->themeCommandDirectory . '/vite.config.js',
+        );
+        $filesystem->copy(
+            __DIR__ . '/Fixture/MakeThemeCommandTest/panel-provider/standard.php',
+            $this->themeCommandDirectory . '/app/Providers/Filament/AdminPanelProvider.php',
+        );
 
-function createCommandWithMockedFilesystem(string $viteConfigContent = '', string $panelProviderContent = '', string $panelId = 'admin'): array
-{
-    $viteConfigPath = base_path('vite.config.js');
-    $panelProviderPath = app_path('Providers/Filament/AdminPanelProvider.php');
-
-    // Use an object to hold the mutable state
-    $state = new stdClass;
-    $state->viteConfig = $viteConfigContent;
-    $state->panelProvider = $panelProviderContent;
-
-    $filesystem = Mockery::mock(Filesystem::class, function (MockInterface $mock) use ($viteConfigPath, $panelProviderPath, $state): void {
-        // vite.config.js
-        $mock->shouldReceive('exists')
-            ->with($viteConfigPath)
-            ->andReturnUsing(fn () => $state->viteConfig !== '');
-
-        $mock->shouldReceive('get')
-            ->with($viteConfigPath)
-            ->andReturnUsing(fn () => $state->viteConfig);
-
-        $mock->shouldReceive('put')
-            ->with($viteConfigPath, Mockery::any())
-            ->andReturnUsing(function ($path, $content) use ($state) {
-                $state->viteConfig = $content;
-
-                return true;
-            });
-
-        // Panel provider
-        $mock->shouldReceive('exists')
-            ->with($panelProviderPath)
-            ->andReturnUsing(fn () => $state->panelProvider !== '');
-
-        $mock->shouldReceive('get')
-            ->with($panelProviderPath)
-            ->andReturnUsing(fn () => $state->panelProvider);
-
-        $mock->shouldReceive('put')
-            ->with($panelProviderPath, Mockery::any())
-            ->andReturnUsing(function ($path, $content) use ($state) {
-                $state->panelProvider = $content;
-
-                return true;
-            });
+        $this->app->setBasePath($this->themeCommandDirectory);
+        $this->app->useAppPath($this->themeCommandDirectory . '/app');
     });
 
-    $command = new MakeThemeCommand;
-
-    // Set up the command's output and components (required for info() calls)
-    $output = new OutputStyle(new ArrayInput([]), new NullOutput);
-    $command->setOutput($output);
-
-    // Set up the command with required properties using reflection
-    $reflection = new ReflectionClass($command);
-
-    // Set up components factory
-    $componentsProperty = $reflection->getProperty('components');
-    $componentsProperty->setValue($command, new ComponentsFactory($output));
-
-    $filesystemProperty = $reflection->getProperty('filesystem');
-    $filesystemProperty->setValue($command, $filesystem);
-
-    $themePathProperty = $reflection->getProperty('themePath');
-    $themePathProperty->setValue($command, "resources/css/filament/{$panelId}/theme.css");
-
-    // Create a mock panel
-    $panel = Panel::make()->id($panelId)->path($panelId);
-    $panelProperty = $reflection->getProperty('panel');
-    $panelProperty->setValue($command, $panel);
-
-    return [
-        'command' => $command,
-        'filesystem' => $filesystem,
-        'getViteConfig' => fn () => $state->viteConfig,
-        'getPanelProvider' => fn () => $state->panelProvider,
-    ];
-}
-
-function callProtectedMethod(object $object, string $method, array $args = []): mixed
-{
-    $reflection = new ReflectionClass($object);
-    $method = $reflection->getMethod($method);
-
-    return $method->invokeArgs($object, $args);
-}
-
-describe('Register in Vite config', function (): void {
-    it('adds theme to single line input array without trailing comma', function (): void {
-        $content = getFixtureContent('vite-config', 'standard.js');
-        $setup = createCommandWithMockedFilesystem(viteConfigContent: $content);
-
-        $result = callProtectedMethod($setup['command'], 'registerInViteConfig');
-
-        expect($result)->toBeTrue();
-        expect(($setup['getViteConfig'])())->toMatchSnapshot();
+    afterEach(function (): void {
+        app(Filesystem::class)->deleteDirectory($this->themeCommandDirectory);
     });
 
-    it('adds theme to single line input array with trailing comma', function (): void {
-        $content = getFixtureContent('vite-config', 'single-line-trailing-comma.js');
-        $setup = createCommandWithMockedFilesystem(viteConfigContent: $content);
+    it('fails without changing theme inputs when the requested package manager is unavailable', function (array $panelArguments): void {
+        $viteConfig = file_get_contents(base_path('vite.config.js'));
+        $panelProvider = file_get_contents(app_path('Providers/Filament/AdminPanelProvider.php'));
+        $packageManager = $this->themeCommandDirectory . '/missing-package-manager';
 
-        $result = callProtectedMethod($setup['command'], 'registerInViteConfig');
+        $this->artisan('make:filament-theme', [
+            ...$panelArguments,
+            '--pm' => $packageManager,
+            '--no-interaction' => true,
+        ])
+            ->expectsOutput("The [{$packageManager}] package manager is not installed. Please install it before continuing.")
+            ->assertFailed();
 
-        expect($result)->toBeTrue();
-        expect(($setup['getViteConfig'])())->toMatchSnapshot();
-    });
+        expect(file_get_contents(base_path('vite.config.js')))->toBe($viteConfig)
+            ->and(file_get_contents(app_path('Providers/Filament/AdminPanelProvider.php')))->toBe($panelProvider)
+            ->and(file_exists(resource_path('css/filament/admin/theme.css')))->toBeFalse()
+            ->and(file_exists(base_path('package.json')))->toBeFalse()
+            ->and(file_exists(base_path('node_modules')))->toBeFalse();
+    })->with([
+        'panel argument' => [['panel' => 'admin']],
+        'panel option' => [['--panel' => 'admin']],
+    ]);
 
-    it('adds theme to Vite config with double quotes', function (): void {
-        $content = getFixtureContent('vite-config', 'double-quotes.js');
-        $setup = createCommandWithMockedFilesystem(viteConfigContent: $content);
+    it('preserves an existing theme when overwrite is declined or installation fails', function (bool $shouldOverwrite): void {
+        $path = resource_path('css/filament/admin/theme.css');
+        $filesystem = app(Filesystem::class);
+        $filesystem->ensureDirectoryExists(dirname($path));
+        $filesystem->put($path, '/* Existing custom theme */');
+        $viteConfig = $filesystem->get(base_path('vite.config.js'));
+        $panelProvider = $filesystem->get(app_path('Providers/Filament/AdminPanelProvider.php'));
+        $environment = app()['env'];
 
-        $result = callProtectedMethod($setup['command'], 'registerInViteConfig');
+        Process::fake(static fn (PendingProcess $process) => Process::result(exitCode: ($process->command === ['npm', '--version']) ? 0 : 1));
+        Process::preventStrayProcesses();
 
-        expect($result)->toBeTrue();
-        expect(($setup['getViteConfig'])())->toMatchSnapshot();
-    });
+        try {
+            app()['env'] = 'local';
 
-    it('adds theme to multiline input array with trailing comma', function (): void {
-        $content = getFixtureContent('vite-config', 'multiline-input.js');
-        $setup = createCommandWithMockedFilesystem(viteConfigContent: $content);
+            // Keep console expectations active while exercising the non-test collision check.
+            Prompt::fallbackWhen(true);
 
-        $result = callProtectedMethod($setup['command'], 'registerInViteConfig');
+            $command = $this->artisan('make:filament-theme', [
+                '--panel' => 'admin',
+                '--skip-build' => true,
+            ])->expectsConfirmation('theme.css already exists, do you want to overwrite it?', $shouldOverwrite ? 'yes' : 'no');
 
-        expect($result)->toBeTrue();
-        expect(($setup['getViteConfig'])())->toMatchSnapshot();
-    });
+            if ($shouldOverwrite) {
+                $command->expectsOutputToContain('Failed to install JavaScript dependencies.');
+            }
 
-    it('adds theme to multiline input array without trailing comma', function (): void {
-        $content = getFixtureContent('vite-config', 'multiline-no-trailing-comma.js');
-        $setup = createCommandWithMockedFilesystem(viteConfigContent: $content);
+            $command->assertFailed();
+            $command->run();
 
-        $result = callProtectedMethod($setup['command'], 'registerInViteConfig');
+            expect($filesystem->get($path))->toBe('/* Existing custom theme */')
+                ->and($filesystem->get(base_path('vite.config.js')))->toBe($viteConfig)
+                ->and($filesystem->get(app_path('Providers/Filament/AdminPanelProvider.php')))->toBe($panelProvider);
 
-        expect($result)->toBeTrue();
-        expect(($setup['getViteConfig'])())->toMatchSnapshot();
-    });
-
-    it('adds theme to Vite config with refresh paths', function (): void {
-        $content = getFixtureContent('vite-config', 'with-refresh-paths.js');
-        $setup = createCommandWithMockedFilesystem(viteConfigContent: $content);
-
-        $result = callProtectedMethod($setup['command'], 'registerInViteConfig');
-
-        expect($result)->toBeTrue();
-        expect(($setup['getViteConfig'])())->toMatchSnapshot();
-    });
-
-    it('returns true without modifying when theme already exists', function (): void {
-        $content = getFixtureContent('vite-config', 'already-has-theme.js');
-        $setup = createCommandWithMockedFilesystem(viteConfigContent: $content);
-
-        $result = callProtectedMethod($setup['command'], 'registerInViteConfig');
-
-        expect($result)->toBeTrue();
-        // Content should be unchanged
-        expect(($setup['getViteConfig'])())->toBe($content);
-    });
-
-    it('returns false when no Vite config exists', function (): void {
-        $setup = createCommandWithMockedFilesystem(viteConfigContent: '');
-
-        $result = callProtectedMethod($setup['command'], 'registerInViteConfig');
-
-        expect($result)->toBeFalse();
-    });
-
-    it('returns false when no Laravel paths in input array', function (): void {
-        $content = getFixtureContent('vite-config', 'no-laravel-paths.js');
-        $setup = createCommandWithMockedFilesystem(viteConfigContent: $content);
-
-        $result = callProtectedMethod($setup['command'], 'registerInViteConfig');
-
-        expect($result)->toBeFalse();
-    });
-
-    it('returns false when no input array exists', function (): void {
-        $content = getFixtureContent('vite-config', 'no-input-array.js');
-        $setup = createCommandWithMockedFilesystem(viteConfigContent: $content);
-
-        $result = callProtectedMethod($setup['command'], 'registerInViteConfig');
-
-        expect($result)->toBeFalse();
-    });
+            if ($shouldOverwrite) {
+                Process::assertRan(static fn (PendingProcess $process): bool => $process->command === ['npm', 'install', 'tailwindcss@latest', '@tailwindcss/vite', '--save-dev']);
+            } else {
+                Process::assertNothingRan();
+            }
+        } finally {
+            app()['env'] = $environment;
+        }
+    })->with([false, true]);
 });
 
-describe('Register in panel provider', function (): void {
-    it('adds `viteTheme()` to standard panel provider', function (): void {
-        $content = getFixtureContent('panel-provider', 'standard.php');
-        $setup = createCommandWithMockedFilesystem(panelProviderContent: $content);
+describe('Panel prerequisites', function (): void {
+    it('fails before running the package manager when no panels are registered', function (): void {
+        $this->app->instance(PanelRegistry::class, new PanelRegistry);
 
-        $result = callProtectedMethod($setup['command'], 'registerInPanelProvider');
-
-        expect($result)->toBeTrue();
-        expect(($setup['getPanelProvider'])())->toMatchSnapshot();
-    });
-
-    it('adds `viteTheme()` to panel provider with different spacing', function (): void {
-        $content = getFixtureContent('panel-provider', 'different-spacing.php');
-        $setup = createCommandWithMockedFilesystem(panelProviderContent: $content);
-
-        $result = callProtectedMethod($setup['command'], 'registerInPanelProvider');
-
-        expect($result)->toBeTrue();
-        expect(($setup['getPanelProvider'])())->toMatchSnapshot();
-    });
-
-    it('adds `viteTheme()` to panel provider with double quotes', function (): void {
-        $content = getFixtureContent('panel-provider', 'double-quotes.php');
-        $setup = createCommandWithMockedFilesystem(panelProviderContent: $content);
-
-        $result = callProtectedMethod($setup['command'], 'registerInPanelProvider');
-
-        expect($result)->toBeTrue();
-        expect(($setup['getPanelProvider'])())->toMatchSnapshot();
-    });
-
-    it('adds `viteTheme()` to full-featured panel provider', function (): void {
-        $content = getFixtureContent('panel-provider', 'full-featured.php');
-        $setup = createCommandWithMockedFilesystem(panelProviderContent: $content);
-
-        $result = callProtectedMethod($setup['command'], 'registerInPanelProvider');
-
-        expect($result)->toBeTrue();
-        expect(($setup['getPanelProvider'])())->toMatchSnapshot();
-    });
-
-    it('returns `true` without modifying when `viteTheme()` already exists', function (): void {
-        $content = getFixtureContent('panel-provider', 'already-has-vite-theme.php');
-        $setup = createCommandWithMockedFilesystem(panelProviderContent: $content);
-
-        $result = callProtectedMethod($setup['command'], 'registerInPanelProvider');
-
-        expect($result)->toBeTrue();
-        // Content should be unchanged
-        expect(($setup['getPanelProvider'])())->toBe($content);
-    });
-
-    it('returns `false` when panel provider does not exist', function (): void {
-        $setup = createCommandWithMockedFilesystem(panelProviderContent: '');
-
-        $result = callProtectedMethod($setup['command'], 'registerInPanelProvider');
-
-        expect($result)->toBeFalse();
-    });
-
-    it('returns `false` when panel ID does not match', function (): void {
-        $content = getFixtureContent('panel-provider', 'wrong-panel-id.php');
-        $setup = createCommandWithMockedFilesystem(panelProviderContent: $content);
-
-        $result = callProtectedMethod($setup['command'], 'registerInPanelProvider');
-
-        expect($result)->toBeFalse();
-    });
-
-    it('adds `viteTheme()` after `id()` when no path method exists', function (): void {
-        $content = getFixtureContent('panel-provider', 'no-path-method.php');
-        $setup = createCommandWithMockedFilesystem(panelProviderContent: $content);
-
-        $result = callProtectedMethod($setup['command'], 'registerInPanelProvider');
-
-        expect($result)->toBeTrue();
-        expect(($setup['getPanelProvider'])())->toMatchSnapshot();
+        $this->artisan('make:filament-theme', [
+            '--pm' => '/missing-filament-theme-package-manager',
+            '--no-interaction' => true,
+        ])
+            ->expectsOutputToContain('Filament has not been installed yet: php artisan filament:install --panels')
+            ->doesntExpectOutputToContain('package manager is not installed')
+            ->assertFailed();
     });
 });

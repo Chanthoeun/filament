@@ -1,13 +1,13 @@
-import { Select } from '../../../../support/resources/js/utilities/select.js'
+import {
+    Select,
+    createSelectOptionRequestHandler,
+} from '../../../../support/resources/js/utilities/select.js'
 
 export default function selectFormComponent({
     canOptionLabelsWrap,
     canSelectPlaceholder,
     clearButtonLabel,
-    getOptionLabelUsing,
-    getOptionLabelsUsing,
-    getOptionsUsing,
-    getSearchResultsUsing,
+    errorMessage,
     hasDynamicOptions,
     hasDynamicSearchResults,
     hasInitialNoOptionsMessage,
@@ -21,6 +21,7 @@ export default function selectFormComponent({
     isMultiple,
     isReorderable,
     isSearchable,
+    key,
     livewireId,
     loadingMessage,
     maxItems,
@@ -40,8 +41,12 @@ export default function selectFormComponent({
     state,
     statePath,
 }) {
+    const optionRequests = createSelectOptionRequestHandler()
+
     return {
         select: null,
+
+        accessibilityObserver: null,
 
         state,
 
@@ -51,10 +56,23 @@ export default function selectFormComponent({
                 canSelectPlaceholder,
                 clearButtonLabel,
                 element: this.$refs.select,
-                getOptionLabelUsing,
-                getOptionLabelsUsing,
-                getOptionsUsing,
-                getSearchResultsUsing,
+                errorMessage,
+                getOptionLabelUsing: () => this.$getOptionLabel(),
+                getOptionLabelsUsing: () => this.$getOptionLabelsForJs(),
+                getOptionsUsing: optionRequests.wrap((request) =>
+                    request(this.$wire, 'callSchemaComponentMethod', [
+                        key,
+                        'getOptionsForJs',
+                    ]),
+                ),
+                getSearchResultsUsing: optionRequests.wrap((search, request) =>
+                    request(
+                        this.$wire,
+                        'callSchemaComponentMethod',
+                        [key, 'getSearchResultsForJs'],
+                        { search },
+                    ),
+                ),
                 hasDynamicOptions,
                 hasDynamicSearchResults,
                 hasInitialNoOptionsMessage,
@@ -91,6 +109,24 @@ export default function selectFormComponent({
                 statePath,
             })
 
+            const attributesElement = this.$el.previousElementSibling
+            if (attributesElement?.hasAttribute('data-select-accessibility')) {
+                const syncAccessibility = () =>
+                    this.select?.setAccessibilityAttributes(
+                        JSON.parse(
+                            attributesElement.dataset.selectAccessibility,
+                        ),
+                    )
+                syncAccessibility()
+                this.accessibilityObserver = new MutationObserver(
+                    syncAccessibility,
+                )
+                this.accessibilityObserver.observe(attributesElement, {
+                    attributes: true,
+                    attributeFilter: ['data-select-accessibility'],
+                })
+            }
+
             this.$watch('state', (newState) => {
                 this.$nextTick(() => {
                     if (this.select && this.select.state !== newState) {
@@ -103,10 +139,12 @@ export default function selectFormComponent({
         },
 
         destroy() {
+            this.accessibilityObserver?.disconnect()
             if (this.select) {
                 this.select.destroy()
                 this.select = null
             }
+            optionRequests.destroy()
         },
     }
 }

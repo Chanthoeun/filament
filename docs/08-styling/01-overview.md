@@ -1,8 +1,6 @@
 ---
 title: Overview
 ---
-import Aside from "@components/Aside.astro"
-import AutoScreenshot from "@components/AutoScreenshot.astro"
 
 ## Changing the colors
 
@@ -29,7 +27,7 @@ public function panel(Panel $panel): Panel
 
 The `Filament\Support\Colors\Color` class contains color options for all [Tailwind CSS color palettes](https://tailwindcss.com/docs/customizing-colors).
 
-<AutoScreenshot name="panels/styling/colors" alt="Panel with custom colors" version="4.x" />
+<AutoScreenshot name="panels/styling/colors" alt="Panel with custom colors" />
 
 You can also pass in a function to `register()` which will only get called when the app is getting rendered. This is useful if you are calling `register()` from a service provider, and want to access objects like the currently authenticated user, which are initialized later in middleware.
 
@@ -87,7 +85,7 @@ public function panel(Panel $panel): Panel
 
 All [Google Fonts](https://fonts.google.com) are available to use.
 
-<AutoScreenshot name="panels/styling/font" alt="Panel with custom font" version="4.x" />
+<AutoScreenshot name="panels/styling/font" alt="Panel with custom font" />
 
 ### Changing the font provider
 
@@ -131,7 +129,7 @@ By default, this command will use NPM to install dependencies. If you want to us
 
 ```bash
 php artisan make:filament-theme --pm=bun
-````
+```
 
 This command will:
 
@@ -140,6 +138,12 @@ This command will:
 3. Attempt to automatically add the theme to your `vite.config.js` input array
 4. Attempt to automatically register `->viteTheme()` in your panel provider
 5. Offer to compile the theme with Vite
+
+You can use `--skip-install` if you want to install the required dependencies yourself, and `--skip-build` if you want to compile the theme later:
+
+```bash
+php artisan make:filament-theme admin --skip-install --skip-build
+```
 
 If the command cannot automatically configure your files (due to non-standard formatting), it will display manual instructions instead. In that case, follow these steps:
 
@@ -275,6 +279,8 @@ public function panel(Panel $panel): Panel
 }
 ```
 
+You can check this configuration with `$panel->isDarkModeForced()` or `Filament\Facades\Filament::isDarkModeForced()` for the current panel. This is distinct from `hasDarkMode()`, which checks whether dark mode is available, and does not indicate the user's selected theme.
+
 ### Changing the default theme mode
 
 By default, Filament uses the user's system theme as the default mode. For example, if the user's computer is in dark mode, Filament will use dark mode by default. The system mode in Filament is reactive if the user changes their computer's mode. If you want to change the default mode to force light or dark mode, you can use the `defaultThemeMode()` method, passing `ThemeMode::Light` or `ThemeMode::Dark`:
@@ -308,7 +314,7 @@ public function panel(Panel $panel): Panel
 }
 ```
 
-<AutoScreenshot name="panels/styling/brand-name" alt="Panel with custom brand name" version="4.x" />
+<AutoScreenshot name="panels/styling/brand-name" alt="Panel with custom brand name" />
 
 To render an image instead, you can pass a URL to the `brandLogo()` method:
 
@@ -323,7 +329,7 @@ public function panel(Panel $panel): Panel
 }
 ```
 
-<AutoScreenshot name="panels/styling/brand-logo" alt="Panel with custom brand logo" version="4.x" />
+<AutoScreenshot name="panels/styling/brand-logo" alt="Panel with custom brand logo" />
 
 Alternatively, you may directly pass HTML to the `brandLogo()` method to render an inline SVG element for example:
 

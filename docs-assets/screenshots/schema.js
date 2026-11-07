@@ -302,6 +302,16 @@ export default {
         },
         selector: '.fi-modal-window-ctn',
     },
+    'actions/modal/eyebrow': {
+        url: 'actions',
+        viewport: { width: 640, height: 360, deviceScaleFactor: 3 },
+        before: async (page) => {
+            await page.click('#modalEyebrowAction button')
+            await page.waitForSelector('#modal h2', { visible: true })
+            await blurActiveElement(page)
+        },
+        selector: '.fi-modal-window-ctn',
+    },
     'actions/modal/icon': {
         url: 'actions',
         viewport: {
@@ -1779,6 +1789,24 @@ export default {
             await new Promise((resolve) => setTimeout(resolve, 500))
         },
     },
+    'forms/fields/rich-editor/custom-block-previews': {
+        url: 'forms/fields/rich-editor',
+        selector: '#richEditorCustomBlockPreviews',
+        viewport: {
+            width: 1920,
+            height: 1000,
+            deviceScaleFactor: 3,
+        },
+    },
+    'forms/fields/rich-editor/minimal-custom-block-controls': {
+        url: 'forms/fields/rich-editor',
+        selector: '#richEditorMinimalCustomBlockControls',
+        viewport: {
+            width: 1920,
+            height: 1000,
+            deviceScaleFactor: 3,
+        },
+    },
     'forms/fields/rich-editor/grouped-custom-blocks': {
         url: 'forms/fields/rich-editor',
         selector: '#richEditorGroupedCustomBlocks',
@@ -1801,6 +1829,39 @@ export default {
             // appear in the screenshot depending on hover timing.
             await page.mouse.move(0, 0)
             await new Promise((resolve) => setTimeout(resolve, 500))
+        },
+    },
+    'forms/fields/rich-editor/custom-blocks-grid': {
+        url: 'forms/fields/rich-editor',
+        selector: '#richEditorCustomBlocksGrid',
+        viewport: {
+            width: 1920,
+            height: 640,
+            deviceScaleFactor: 3,
+        },
+    },
+    'forms/fields/rich-editor/searchable-custom-blocks-grid': {
+        url: 'forms/fields/rich-editor',
+        selector: '#richEditorSearchableCustomBlocksGrid',
+        viewport: {
+            width: 1920,
+            height: 900,
+            deviceScaleFactor: 3,
+        },
+        before: async (page) => {
+            await page.evaluate(() => {
+                document.querySelector('#richEditorSearchableCustomBlocksGrid').scrollIntoView()
+            })
+            await page.waitForSelector('#richEditorSearchableCustomBlocksGrid .tiptap.ProseMirror')
+            await page.type('#richEditorSearchableCustomBlocksGrid input[type="search"]', 'Media')
+            await page.waitForFunction(() => {
+                const panel = document.querySelector('#richEditorSearchableCustomBlocksGrid')
+                const labels = [...panel.querySelectorAll('.fi-fo-rich-editor-custom-block-btn')]
+                    .filter((block) => block.checkVisibility())
+                    .map((block) => block.textContent.trim())
+                return labels.length === 2 && labels.includes('Image gallery') && labels.includes('Video embed')
+            })
+            await page.mouse.move(0, 0)
         },
     },
     'forms/fields/rich-editor/floating-toolbar': {
@@ -2125,6 +2186,22 @@ export default {
             await new Promise((resolve) => setTimeout(resolve, 500))
         },
     },
+    'forms/fields/builder/grouped-blocks': {
+        url: 'forms/fields/builder',
+        selector: 'body',
+        viewport: {
+            width: 1152,
+            height: 400,
+            deviceScaleFactor: 3,
+        },
+        before: async (page) => {
+            await page.evaluate(() => document.querySelector('#builderGroupedBlocks').scrollIntoView())
+            await new Promise((resolve) => setTimeout(resolve, 500))
+            await page.click('#builderGroupedBlocks .fi-dropdown-trigger button')
+            await page.waitForSelector('#builderGroupedBlocks [role="group"][aria-label="Media"]', { visible: true })
+            await new Promise((resolve) => setTimeout(resolve, 500))
+        },
+    },
     'forms/fields/tags-input/simple': {
         url: 'forms/fields/tags-input',
         selector: '#tagsInput',
@@ -2273,6 +2350,15 @@ export default {
             deviceScaleFactor: 3,
         },
     },
+    'forms/fields/toggle-buttons/full-width': {
+        url: 'forms/fields/toggle-buttons',
+        selector: '#toggleButtonsFullWidth',
+        viewport: {
+            width: 1920,
+            height: 640,
+            deviceScaleFactor: 3,
+        },
+    },
     'forms/fields/toggle-buttons/grouped': {
         url: 'forms/fields/toggle-buttons',
         selector: '#toggleButtonsGrouped',
@@ -2325,6 +2411,15 @@ export default {
             // settle, so it is not captured missing or mid-positioning.
             await page.waitForSelector('[data-tippy-root]', { visible: true })
             await new Promise((resolve) => setTimeout(resolve, 800))
+        },
+    },
+    'forms/fields/toggle-buttons/size': {
+        url: 'forms/fields/toggle-buttons',
+        selector: '#toggleButtonsSize',
+        viewport: {
+            width: 1920,
+            height: 640,
+            deviceScaleFactor: 3,
         },
     },
     'forms/fields/toggle-buttons/disabled-option': {
@@ -4341,6 +4436,27 @@ export default {
             deviceScaleFactor: 3,
         },
     },
+    'tables/loading-skeleton': {
+        url: 'tables?table=loadingSkeleton',
+        selector: '#table',
+        viewport: {
+            width: 1080,
+            height: 640,
+            deviceScaleFactor: 3,
+        },
+        before: async (page) => {
+            await page.$eval('#table', (table) => {
+                table.scrollIntoView()
+
+                const content = table.querySelector('.fi-ta-content-ctn')
+
+                content.classList.add('fi-ta-content-loading')
+                content.setAttribute('aria-busy', 'true')
+            })
+
+            await new Promise((resolve) => setTimeout(resolve, 500))
+        },
+    },
     'tables/overview/columns': {
         url: 'tables?table=gettingStartedColumns',
         selector: '#table',
@@ -5360,6 +5476,20 @@ export default {
                     break
                 }
             }
+        },
+    },
+    'tables/filters/query-builder-grouped': {
+        url: 'tables?table=filtersQueryBuilderGrouped',
+        selector: 'body',
+        viewport: {
+            width: 1280,
+            height: 660,
+            deviceScaleFactor: 3,
+        },
+        before: async (page) => {
+            await page.click('.fi-fo-builder-block-picker .fi-dropdown-trigger button')
+            await page.waitForSelector('[role="group"][aria-label="Logic"]', { visible: true })
+            await new Promise((resolve) => setTimeout(resolve, 500))
         },
     },
     'tables/actions/simple': {
@@ -6990,6 +7120,18 @@ export default {
                 window.dispatchEvent(new CustomEvent('open-modal', { detail: { id: 'demo-modal-heading' } }))
             })
             await new Promise((resolve) => setTimeout(resolve, 1000))
+        },
+    },
+    'components/modal/eyebrow': {
+        url: 'components/modal',
+        selector: '[data-fi-modal-id="demo-modal-eyebrow"] .fi-modal-window',
+        selectorPadding: 32,
+        viewport: { width: 576, height: 500, deviceScaleFactor: 3 },
+        before: async (page) => {
+            await page.evaluate(() => {
+                window.dispatchEvent(new CustomEvent('open-modal', { detail: { id: 'demo-modal-eyebrow' } }))
+            })
+            await page.waitForSelector('[data-fi-modal-id="demo-modal-eyebrow"] .fi-modal-window', { visible: true })
         },
     },
     'components/link/sizes': {

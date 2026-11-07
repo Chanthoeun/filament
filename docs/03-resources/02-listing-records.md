@@ -1,11 +1,8 @@
 ---
 title: Listing records
 ---
-import AutoScreenshot from "@components/AutoScreenshot.astro"
-import Aside from "@components/Aside.astro"
-import UtilityInjection from "@components/UtilityInjection.astro"
 
-<AutoScreenshot name="panels/resources/listing" alt="Resource listing page" version="4.x" />
+<AutoScreenshot name="panels/resources/listing" alt="Resource listing page" />
 
 ## Using tabs to filter the records
 
@@ -27,7 +24,7 @@ public function getTabs(): array
 }
 ```
 
-<AutoScreenshot name="panels/resources/listing-tabs" alt="Resource listing page with tabs" version="4.x" />
+<AutoScreenshot name="panels/resources/listing-tabs" alt="Resource listing page with tabs" />
 
 ### Customizing the filter tab labels
 
@@ -60,7 +57,7 @@ Tab::make()
     ->icon('heroicon-m-user-group')
 ```
 
-<AutoScreenshot name="panels/resources/listing-tabs-icons" alt="Resource listing page with tab icons" version="4.x" />
+<AutoScreenshot name="panels/resources/listing-tabs-icons" alt="Resource listing page with tab icons" />
 
 You can also change the icon's position to be after the label instead of before it, using the `iconPosition()` method:
 
@@ -95,27 +92,25 @@ Tab::make()
     ->badgeColor('success')
 ```
 
-<UtilityInjection set="schemaComponents" version="4.x" extras="Badge;;?string;;$badge;;The evaluated value of the badge.">As well as allowing a static value, the `badgeColor()` method also accepts a function to dynamically calculate it. You can inject various utilities into the function as parameters.</UtilityInjection>
+<UtilityInjection set="schemaComponents" extras="Badge;;?string;;$badge;;The evaluated value of the badge.">As well as allowing a static value, the `badgeColor()` method also accepts a function to dynamically calculate it. You can inject various utilities into the function as parameters.</UtilityInjection>
 
-<AutoScreenshot name="panels/resources/listing-tabs-badge-colors" alt="Resource listing page with colored tab badges" version="4.x" />
+<AutoScreenshot name="panels/resources/listing-tabs-badge-colors" alt="Resource listing page with colored tab badges" />
 
-#### Deferring the loading of filter tab badges
+#### Lazy loading filter tab badges
 
-If you have expensive queries powering your tab badges (such as counting large datasets), the initial page load may be slow. You can defer the loading of tab badges using the `deferBadge()` method, which will load the badge values asynchronously after the page has rendered:
+If you have expensive queries powering your tab badges (such as counting large datasets), the initial page load may be slow. You can lazy load tab badges using the `lazyLoadedBadge()` method, which will load the badge values asynchronously after the page has rendered:
 
 ```php
 use Filament\Schemas\Components\Tabs\Tab;
 
 Tab::make()
     ->badge(static fn (): int => Customer::query()->where('active', true)->count())
-    ->deferBadge()
+    ->lazyLoadedBadge()
 ```
 
 <Aside variant="danger">
-    The `badge()` value must be returned from a function when using `deferBadge()`. If you pass a raw value like `badge(Customer::query()->count())`, the query runs immediately when the tab is built, defeating the purpose of deferral.
+    The `badge()` value must be returned from a function when using `lazyLoadedBadge()`. If you pass a raw value like `badge(Customer::query()->count())`, the query runs immediately when the tab is built, defeating the purpose of lazy loading.
 </Aside>
-
-While the badges are loading, a small loading indicator will appear in place of each deferred badge. Once the data is fetched, the loading indicators will be replaced with the actual badge values.
 
 ### Adding extra attributes to filter tabs
 
@@ -152,7 +147,7 @@ public function getDefaultActiveTab(): string | int | null
 
 ### Excluding the tab query when resolving records
 
-When a user interacts with a table record (e.g., clicking an action button), Filament resolves that record from the database. By default, the active tab's query is applied, ensuring users cannot access records outside the current tab's scope.
+When a user interacts with a table record (e.g., clicking an action button), Filament resolves that record from the database. While a valid tab is active, its query is applied when resolving the record.
 
 However, when a record's state changes after the user saw it in the table, you may still want the user to interact with it. For example, if you have an "Active" tab and an action sets a record to inactive, subsequent actions in the same modal would fail to resolve that record.
 
@@ -176,7 +171,7 @@ public function getTabs(): array
 ```
 
 <Aside variant="danger">
-    Do not use `excludeQueryWhenResolvingRecord()` on tabs that enforce authorization rules. For example, if you have a tab that restricts records by tenant or user ownership, those tabs should remain enforced to prevent unauthorized access.
+    Tabs are controlled by the client and must not be your only tenant or ownership restriction. Apply mandatory restrictions to the resource's `getEloquentQuery()` or the table's `modifyQueryUsing()`, and authorize operations separately. `excludeQueryWhenResolvingRecord()` only changes record resolution; it must not remove your application's authorization boundary.
 </Aside>
 
 ## Authorization
@@ -185,7 +180,7 @@ For authorization, Filament will observe any [model policies](https://laravel.co
 
 Users may access the List page if the `viewAny()` method of the model policy returns `true`.
 
-The `reorder()` method is used to control [reordering a record](#reordering-records).
+The `reorder()` method is used to control [reordering a record](../tables/overview#reordering-records).
 
 ## Customizing the table Eloquent query
 
@@ -210,6 +205,7 @@ Each page in Filament has its own [schema](../schemas), which defines the overal
 use Filament\Schemas\Components\EmbeddedTable;
 use Filament\Schemas\Components\RenderHook;
 use Filament\Schemas\Schema;
+use Filament\View\PanelsRenderHook;
 
 public function content(Schema $schema): Schema
 {
@@ -227,7 +223,7 @@ Inside the `components()` array, you can insert any [schema component](../schema
 
 ### Using a custom Blade view
 
-For further customization opportunities, you can override the static `$view` property on the page class to a custom view in your app:
+For further customization opportunities, you can override the `$view` property on the page class to a custom view in your app:
 
 ```php
 protected string $view = 'filament.resources.users.pages.list-users';

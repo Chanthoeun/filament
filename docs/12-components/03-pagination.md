@@ -2,7 +2,6 @@
 title: Pagination Blade component
 ---
 
-import AutoScreenshot from "@components/AutoScreenshot.astro"
 
 ## Introduction
 
@@ -30,7 +29,7 @@ class ListUsers extends Component
 <x-filament::pagination :paginator="$users" />
 ```
 
-<AutoScreenshot name="components/pagination/simple" alt="Pagination" version="4.x" />
+<AutoScreenshot name="components/pagination/simple" alt="Pagination" />
 
 Alternatively, you can use simple pagination or cursor pagination, which will just render a "previous" and "next" button:
 
@@ -41,7 +40,7 @@ User::query()->simplePaginate(10)
 User::query()->cursorPaginate(10)
 ```
 
-<AutoScreenshot name="components/pagination/simple-paginator" alt="Simple pagination" version="4.x" />
+<AutoScreenshot name="components/pagination/simple-paginator" alt="Simple pagination" />
 
 ## Allowing the user to customize the number of items per page
 
@@ -70,12 +69,23 @@ class ListUsers extends Component
 ```blade
 <x-filament::pagination
     :paginator="$users"
-    :page-options="[5, 10, 20, 50, 100, 'all']"
+    :page-options="[5, 10, 20, 50, 100]"
     current-page-option-property="perPage"
 />
 ```
 
-<AutoScreenshot name="components/pagination/page-options" alt="Pagination with page size options" version="4.x" />
+<AutoScreenshot name="components/pagination/page-options" alt="Pagination with page size options" />
+
+## Disabling pagination buttons during other requests
+
+You can disable pagination buttons during additional Livewire requests by passing their method or property names to `loading-targets`:
+
+```blade
+<x-filament::pagination
+    :paginator="$users"
+    :loading-targets="['search', 'applyFilters']"
+/>
+```
 
 ## Displaying links to the first and the last page
 
@@ -88,4 +98,4 @@ Extreme links are the first and last page links. You can add them by passing the
 />
 ```
 
-<AutoScreenshot name="components/pagination/extreme-links" alt="Pagination with extreme links" version="4.x" />
+<AutoScreenshot name="components/pagination/extreme-links" alt="Pagination with extreme links" />

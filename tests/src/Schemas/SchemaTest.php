@@ -25,6 +25,21 @@ it('can be constructed without a Livewire component', function (): void {
     expect($schema)->toBeInstanceOf(Schema::class);
 });
 
+it('belongs to a `Livewire` component', function (): void {
+    $schema = Schema::make($livewire = Livewire::make());
+
+    expect($schema)
+        ->getLivewire()->toBe($livewire);
+});
+
+it('belongs to a parent component', function (): void {
+    $schema = Schema::make(Livewire::make())
+        ->parentComponent($component = new Component);
+
+    expect($schema)
+        ->getParentComponent()->toBe($component);
+});
+
 describe('alignment factory methods', function (): void {
     it('creates a start-aligned schema with `start()`', function (): void {
         $schema = Schema::start([]);
@@ -134,8 +149,18 @@ describe('`toEmbeddedHtml()` rendering', function (): void {
 
         expect($html)->toContain('fi-sc-has-gap');
     });
+});
 
-    it('can use `deferLoading()` to render a loading indicator before its components', function (): void {
+describe('deferred rendering', function (): void {
+    it('preserves `lazy()` as the blur binding alias without enabling lazy loading', function (): void {
+        $schema = Schema::make()->lazy();
+
+        expect($schema->getStateBindingModifiers())->toBe(['blur'])
+            ->and($schema->isLazy())->toBeTrue()
+            ->and($schema->isLazyLoaded())->toBeFalse();
+    });
+
+    it('renders a loading indicator instead of components with lazy loading', function (string $method): void {
         $livewire = Livewire::make();
 
         $schema = Schema::make($livewire)
@@ -146,31 +171,50 @@ describe('`toEmbeddedHtml()` rendering', function (): void {
             ->extraAttributes([
                 'data-testid' => 'deferred-schema',
             ])
-            ->deferLoading();
+            ->{$method}();
 
         expect($schema->toEmbeddedHtml())
             ->toContain('fi-sc-loading')
             ->toContain('data-testid="deferred-schema"')
             ->toContain('wire:partial="schema.form"')
             ->not->toContain('Loaded content');
+    })->with(['lazyLoaded', 'deferLoading']);
 
-        $livewire->loadedDeferredSchemas['form'] = true;
-        $livewire->renderingInteractsWithSchemas();
-
-        expect($schema->toEmbeddedHtml())
-            ->not->toContain('fi-sc-loading')
-            ->toContain('Loaded content');
-    });
-
-    it('can conditionally use `deferLoading()`', function (): void {
+    it('can conditionally use lazy loading', function (string $method): void {
         $schema = Schema::make(Livewire::make())
             ->components([
                 Text::make('Loaded content'),
             ])
-            ->deferLoading(static fn (): bool => false);
+            ->{$method}(static fn (): bool => false);
 
         expect($schema->isLoadingDeferred())->toBeFalse()
+            ->and($schema->isLazyLoaded())->toBeFalse()
             ->and($schema->toEmbeddedHtml())->toContain('Loaded content');
+    })->with(['lazyLoaded', 'deferLoading']);
+
+    it('shares configuration between `lazyLoaded()` and `deferLoading()` without changing state binding', function (): void {
+        $schema = Schema::make()->lazyLoaded();
+
+        expect($schema->isLoadingDeferred())->toBeTrue()
+            ->and($schema->isLazy())->toBeFalse()
+            ->and($schema->getStateBindingModifiers())->toBe([])
+            ->and($schema->deferLoading(false)->isLazyLoaded())->toBeFalse()
+            ->and($schema->deferLoading()->lazyLoaded(false)->isLoadingDeferred())->toBeFalse();
+    });
+
+    it('renders lazily with `isLazyLoaded()` overridden', function (): void {
+        $schema = new class(Livewire::make()) extends Schema
+        {
+            public function isLazyLoaded(): bool
+            {
+                return true;
+            }
+        };
+
+        $schema->key('form')->components([Text::make('Loaded content')]);
+
+        expect($schema->toEmbeddedHtml())->not->toContain('Loaded content')
+            ->and($schema->isLoadingDeferred())->toBeTrue();
     });
 
     it('requires deferred child schemas to have a unique key', function (): void {
@@ -377,7 +421,7 @@ it('invalidates hierarchy caches when a supplied `Schema` is attached', function
         ->toBe($rootSchema);
 });
 
-describe('state path', function (): void {
+describe('state paths', function (): void {
     it('can set `statePath()`', function (): void {
         $schema = Schema::make(Livewire::make())
             ->statePath('data');

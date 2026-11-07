@@ -1,8 +1,6 @@
 ---
 title: Multi-factor authentication
 ---
-import Aside from "@components/Aside.astro"
-import AutoScreenshot from "@components/AutoScreenshot.astro"
 
 ## Introduction
 
@@ -10,12 +8,16 @@ Users in Filament can sign in with their email address and password by default. 
 
 When MFA is enabled, users must perform an extra step before they are authenticated and have access to the application.
 
-<AutoScreenshot name="panels/mfa-challenge" alt="The multi-factor authentication challenge page" version="4.x" />
+<AutoScreenshot name="panels/mfa-challenge" alt="The multi-factor authentication challenge page" />
 
 Filament includes two methods of MFA which you can enable out of the box:
 
 - [App authentication](#app-authentication) uses a Google Authenticator-compatible app (such as the Google Authenticator, Authy, or Microsoft Authenticator apps) to generate a time-based one-time password (TOTP) that is used to verify the user.
 - [Email authentication](#email-authentication) sends a one-time code to the user's email address, which they must enter to verify their identity.
+
+<Aside variant="warning">
+    The built-in providers use your application's default cache store for challenge or replay-protection state and use an atomic cache lock when the store supports one. In a multi-server deployment, every server should use the same authoritative cache backend, and this state should remain available while its codes can be accepted. Cache locks reduce the chance that overlapping requests accept the same code while the lock lease remains valid. Without lock support, sequential code reuse is still prevented, but concurrent requests may accept the same code.
+</Aside>
 
 In Filament, users set up multi-factor authentication from their [profile page](overview#authentication-features). If you use Filament's profile page feature, setting up multi-factor authentication will automatically add the correct UI elements to the profile page:
 
@@ -30,7 +32,7 @@ public function panel(Panel $panel): Panel
 }
 ```
 
-<AutoScreenshot name="panels/mfa" alt="Multi-factor authentication options on the profile page" version="4.x" />
+<AutoScreenshot name="panels/mfa" alt="Multi-factor authentication options on the profile page" />
 
 ## App authentication
 
@@ -81,10 +83,6 @@ public function panel(Panel $panel): Panel
         ]);
 }
 ```
-
-<Aside variant="warning">
-    To prevent the same app authentication code from being accepted more than once, use a default cache store that supports atomic locks, such as the database or Redis cache driver. All application servers must use the same cache backend. With other cache configurations, concurrent requests may accept the same code more than once.
-</Aside>
 
 ### Setting up app recovery codes
 
@@ -295,6 +293,19 @@ public function panel(Panel $panel): Panel
 }
 ```
 
+### Customizing email code generation
+
+You can customize how each email code is generated using `generateCodeUsing()`. The callback receives no arguments and must return a string. Use a cryptographically secure random source and return a six-digit code to match the challenge input:
+
+```php
+use Filament\Auth\MultiFactor\Email\EmailAuthentication;
+
+EmailAuthentication::make()
+    ->generateCodeUsing(fn (): string => str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT));
+```
+
+Pass `null` to `generateCodeUsing()` to restore the default generator.
+
 ## Requiring multi-factor authentication
 
 By default, users are not required to set up multi-factor authentication. You can require users to configure it by passing `isRequired: true` as a parameter to the `multiFactorAuthentication()` method in the [configuration](../panel-configuration):
@@ -344,7 +355,21 @@ class SmsAuthentication implements MultiFactorAuthenticationProvider
 }
 ```
 
-The service should generate codes using a cryptographically secure random source, store only a hash of each code, scope codes to the user they were issued for, expire and consume codes, and rate-limit both delivery and verification attempts. It may deliver codes using any [SMS notification channel supported by Laravel](https://laravel.com/docs/notifications#sms-notifications).
+The service should generate codes using a cryptographically secure random source, store only a hash of each code, give codes a short expiry time, consume valid codes after verification, and rate-limit both delivery and verification attempts. It may deliver codes using any [SMS notification channel supported by Laravel](https://laravel.com/docs/notifications#sms-notifications).
+
+Code storage and rate limits must be scoped to the complete authentication principal, not only the user's model key or authentication identifier. Numeric keys and other identifiers can belong to unrelated users when an application has multiple authentication guards or user models. You can use `Filament::getUserScopedAuthIdentifier($user)` to generate an opaque identifier containing the active authentication guard, concrete user model class, and authentication identifier:
+
+```php
+use Filament\Facades\Filament;
+
+$principal = Filament::getUserScopedAuthIdentifier($user);
+```
+
+For codes generated for a particular login challenge, also bind the stored code to the current session so that a code issued for one browser's challenge cannot satisfy another. If your application runs on multiple servers, code storage and rate limits should use a shared backend.
+
+When the storage backend supports it, validation and consumption should be atomic, using a database transaction with a row lock, an atomic compare-and-delete operation, or a cache lock. If work can outlive a lock lease, checking lock ownership and re-reading the stored state immediately before changing it can reject many stale operations, but only an atomic conditional mutation can eliminate the final race after that check. An older request should never delete a newer code or overwrite newer verification progress. Without a suitable atomic primitive, you should still consume valid codes to prevent sequential reuse, but concurrent requests may both accept the same code.
+
+For a time-based provider like app authentication, store the timestep of the last accepted code and only replace it with a newer timestep. This rejects both repeated and older codes and prevents verification progress from moving backwards.
 
 ### Identifying the provider
 
@@ -414,7 +439,7 @@ public function getManagementSchemaComponents(): array
 // ...
 ```
 
-In this example, the setup and disable actions should send an SMS code, display a `OneTimeCodeInput`, verify the code using the service, and then persist the new enabled state. Keeping these workflows in separate action classes prevents the provider from becoming difficult to read. If your integration manages enrollment elsewhere, the management schema could instead contain an action that links to that page.
+In this example, the setup and disable actions should send an SMS code, display a `OneTimeCodeInput`, verify the code using the service, and then persist the new enabled state. Any temporary enrollment state that is passed between requests, including encrypted action arguments, should contain the scoped principal identifier and be rejected if it no longer matches the current user. Keeping these workflows in separate action classes prevents the provider from becoming difficult to read. If your integration manages enrollment elsewhere, the management schema could instead contain an action that links to that page.
 
 ### Rendering the challenge form
 
@@ -447,7 +472,7 @@ public function getChallengeFormComponents(Authenticatable $user): array
 // ...
 ```
 
-The verification operation should consume a valid code so that it cannot be used successfully again.
+The verification operation should follow the storage, expiry, rate-limiting, and one-time consumption practices described above.
 
 ### Running logic before the challenge
 
@@ -470,7 +495,7 @@ class SmsAuthentication implements HasBeforeChallengeHook, MultiFactorAuthentica
 }
 ```
 
-The `beforeChallenge()` method may be called more than once if the user switches between enabled providers. The service should rate-limit code delivery and avoid invalidating an existing code when another code cannot be sent yet.
+The `beforeChallenge()` method may be called more than once if the user switches between enabled providers. The service should rate-limit code delivery using the scoped principal identifier and avoid invalidating an existing code when another code cannot be sent yet.
 
 <Aside variant="danger">
     Store phone numbers in a consistent format such as E.164, and disable SMS authentication whenever a user's phone number changes so that they must verify the new number. You should also provide a secure account recovery process for users who lose access to their phone. SMS authentication is vulnerable to risks such as SIM swapping, so consider offering app authentication or security keys as stronger alternatives.
@@ -498,7 +523,7 @@ public function panel(Panel $panel): Panel
 
 The multi-factor challenge that the login page presents is also available on its own, so that you can ask a signed-in user to verify a configured factor before they perform a sensitive action.
 
-The `MultiFactorChallenge` class builds the challenge for a user. Its schema components carry the validation rules that verify the code that the user enters.
+The `MultiFactorChallenge` class builds the challenge form for a user. Its components carry the validation rules that verify the code that the user enters.
 
 <Aside variant="info">
     The examples below assume that `$user` is the signed-in user and is an instance of `Authenticatable`. Your Livewire component must also be [set up to use schemas](../components/schema) and use the `RestrictsFileUploadsToSchemaComponents` trait described in the [security documentation](../advanced/security#restricting-livewire-file-uploads-to-schema-components).
@@ -516,29 +541,29 @@ $multiFactorChallenge = MultiFactorChallenge::make();
 abort_unless($multiFactorChallenge->hasEnabledProviders($user), 403);
 ```
 
-Always repeat this check immediately before validating the challenge. When no provider is enabled, `getSchemaComponents()` returns an empty schema, and validating an empty schema succeeds. Your application must treat that state as a failed challenge.
+Always repeat this check immediately before validating the challenge. When no provider is enabled, `getFormComponents()` returns no components, and validating an empty form succeeds. Your application must treat that state as a failed challenge.
 
 You can use `getEnabledProviders()` to retrieve all enabled provider instances, or `getFirstEnabledProvider()` to retrieve the first one. `getFirstEnabledProvider()` returns `null` when none are enabled.
 
-### Building the challenge schema
+### Building the challenge form
 
-Use `getSchemaComponents()` to get the provider picker and challenge fields for every enabled provider:
+Use `getFormComponents()` to get the provider picker and challenge fields for every enabled provider:
 
 ```php
 use Filament\Auth\MultiFactor\MultiFactorChallenge;
 
-$schema
-    ->components(MultiFactorChallenge::make()->getSchemaComponents($user))
+$form
+    ->components(MultiFactorChallenge::make()->getFormComponents($user))
     ->statePath('multiFactorData');
 ```
 
-When more than one provider is enabled, the generated provider picker controls which provider's fields are visible. If you need to place the picker and fields separately, use `getProviderPickerSchemaComponent()` and `getChallengeSchemaComponents()` instead. Both components must belong to the same root schema so that the picker can find the selected provider's fields.
+When more than one provider is enabled, the generated provider picker controls which provider's fields are visible. If you need to place the picker and fields separately, use `getProviderPickerFormComponent()` and `getChallengeFormComponents()` instead. Both components must belong to the same root schema so that the picker can find the selected provider's fields.
 
-Render and submit the schema like any other Livewire schema.
+Render and submit the form like any other Filament form.
 
 ### Running logic before the challenge
 
-Some providers need to do work before their challenge is presented, such as emailing the user a code. Use `beforeChallenge()` before filling and presenting the schema:
+Some providers need to do work before their challenge is presented, such as emailing the user a code. Use `beforeChallenge()` before filling and presenting the form:
 
 ```php
 $multiFactorChallenge->beforeChallenge($user);
@@ -562,7 +587,7 @@ The rate limiter is shared with the login page's challenge and is scoped to the 
 
 ### Validating the challenge
 
-Call `getState()` on the schema to validate the selected provider's fields. Immediately before doing so, check that the user still has an enabled provider and record a rate-limited attempt:
+Call `getState()` on the form to validate the selected provider's fields. Immediately before doing so, check that the user still has an enabled provider and record a rate-limited attempt:
 
 ```php
 abort_unless($multiFactorChallenge->hasEnabledProviders($user), 403);
@@ -579,16 +604,14 @@ $this->multiFactorChallengeForm->getState();
 
 ## Security notes about multi-factor authentication
 
-In Filament, the multi-factor authentication process occurs before the user is actually authenticated into the app. This allows you to be sure that no users can authenticate and access the app without passing the multi-factor authentication step. You do not need to remember to add middleware to any of your authenticated routes to ensure that users completed the multi-factor authentication step.
+When a user with an enabled multi-factor authentication provider signs in through Filament's login page, the challenge must succeed before Filament authenticates them. Users without an enabled provider can still sign in; [require multi-factor authentication](#requiring-multi-factor-authentication) if they must configure one before accessing the panel.
 
-However, if you have other parts of your Laravel app that authenticate users, please bear in mind that they will not be challenged for multi-factor authentication if they are already authenticated elsewhere and then visit the panel, unless [multi-factor authentication is required](#requiring-multi-factor-authentication) and they have not set it up yet.
+Filament does not challenge users who arrive at the panel already authenticated through another part of your application. Requiring multi-factor authentication enforces setup for these users, not a new challenge for an already-configured provider. If your application has other login routes or authentication paths, enforce the challenges you need on those paths separately.
 
 ### Concurrent recovery code submissions
 
-When a user signs in with a recovery code, Filament's `verifyRecoveryCode()` method wraps the read-validate-write sequence in a per-user `Cache::lock` and a database transaction with a `lockForUpdate()` row lock on the user's row. The cache lock serializes concurrent submissions across PHP workers regardless of the underlying database driver, so two parallel sign-in requests cannot both consume the same code or resurrect a just-consumed code from a stale snapshot — even when the storage is a non-SQL store, a different database connection, or a driver without `SELECT ... FOR UPDATE` support (such as SQLite).
+When a user signs in with a recovery code, Filament's `verifyRecoveryCode()` method wraps the read-validate-write sequence in a database transaction with a `lockForUpdate()` row lock on the user's row. This prevents concurrent submissions using the built-in Eloquent storage from consuming the same code or writing a stale list of codes. Filament also uses a per-user cache lock when the configured cache store supports atomic locks.
 
 <Aside variant="warning">
-    The cache lock relies on a shared lock store. Filament's default `file` cache store, as well as `redis`, `memcached`, `database`, and `dynamodb`, all provide a shared lock across PHP-FPM workers on the same machine (or across machines, for the network-backed stores). The `array` store is per-process and does not serialize across workers — it is intended for testing only.
-
-    If you override `getAppAuthenticationRecoveryCodes()` / `saveAppAuthenticationRecoveryCodes()`, the cache lock still wraps the full read-validate-write sequence, so your override is protected. Your override is only responsible for making the storage write itself atomic — for example, a single Eloquent `update()` or an equivalent atomic primitive on your chosen store.
+    If you override `getAppAuthenticationRecoveryCodes()` / `saveAppAuthenticationRecoveryCodes()`, your storage is responsible for preventing concurrent updates. `saveAppAuthenticationRecoveryCodes()` must either persist the new state successfully or throw an exception, since silently ignoring a failed write can allow a recovery code to be reused.
 </Aside>

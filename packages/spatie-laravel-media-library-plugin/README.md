@@ -54,9 +54,9 @@ By default, files will be uploaded publicly to your storage disk defined in the 
 Alternatively, you can manually set the disk with the `disk()` method:
 
 ```php
-use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\SpatieMediaLibraryFileUpload;
 
-FileUpload::make('attachment')
+SpatieMediaLibraryFileUpload::make('attachment')
     ->disk('s3')
 ```
 
@@ -239,7 +239,20 @@ class Post extends Model implements HasRichContent
 }
 ```
 
-You may want to preserve the original filenames of the uploaded files, using the `preserveFilenames()` method:
+You can specify a [media conversion registered on your model](https://spatie.be/docs/laravel-medialibrary/v11/converting-images/defining-conversions) to use for attachments in the editor and rendered rich content using the `conversion()` method:
+
+```php
+use Filament\Forms\Components\RichEditor\FileAttachmentProviders\SpatieMediaLibraryFileAttachmentProvider;
+
+SpatieMediaLibraryFileAttachmentProvider::make()
+    ->conversion('rich-editor-attachments')
+```
+
+If the conversion has not been generated for an attachment, for example while it is queued, the original file is used instead. Private attachments use temporary URLs for the selected conversion, when supported by the storage disk. Omit `conversion()` or pass `null` to use the original files.
+
+> Before preserving original filenames, please review the [security implications of controlling file names](https://filamentphp.com/docs/forms/file-upload#security-implications-of-controlling-file-names). Only enable this feature for trusted users.
+
+You may preserve the original filenames of the uploaded files using the `preserveFilenames()` method:
 
 ```php
 use Filament\Forms\Components\RichEditor\FileAttachmentProviders\SpatieMediaLibraryFileAttachmentProvider;
@@ -384,7 +397,7 @@ It's possible to target the entry to only display a subset of media in a collect
 For example, you could scope the entry to only display media that has certain custom properties:
 
 ```php
-use Filament\Tables\Columns\SpatieMediaLibraryImageEntry;
+use Filament\Infolists\Components\SpatieMediaLibraryImageEntry;
 use Illuminate\Support\Collection;
 
 SpatieMediaLibraryImageEntry::make('images')

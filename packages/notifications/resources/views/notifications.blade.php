@@ -3,7 +3,10 @@
     use Filament\Support\Enums\VerticalAlignment;
 @endphp
 
-<div>
+<div
+    x-data="notificationsComponent()"
+    data-filament-notifications="{{ $hasPulledNotificationsOnMount ? 'mounted' : 'pending' }}"
+>
     <div
         @class([
             'fi-no',
@@ -21,23 +24,13 @@
     @if ($broadcastChannel = $this->getBroadcastChannel())
         @script
             <script>
-                window.addEventListener('EchoLoaded', () => {
-                    window.Echo.private(@js($broadcastChannel)).notification(
-                        (notification) => {
-                            setTimeout(
-                                () =>
-                                    $wire.handleBroadcastNotification(
-                                        notification,
-                                    ),
-                                500,
-                            )
-                        },
-                    )
+                setUpFilamentBroadcastNotifications({
+                    $wire,
+                    broadcastChannel: @js($broadcastChannel),
+                    event: '.Illuminate\\Notifications\\Events\\BroadcastNotificationCreated',
+                    onNotification: (notification) =>
+                        $wire.handleBroadcastNotification(notification),
                 })
-
-                if (window.Echo) {
-                    window.dispatchEvent(new CustomEvent('EchoLoaded'))
-                }
             </script>
         @endscript
     @endif

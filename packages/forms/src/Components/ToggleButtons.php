@@ -12,6 +12,9 @@ use Filament\Schemas\Components\StateCasts\OptionsArrayStateCast;
 use Filament\Schemas\Components\StateCasts\OptionStateCast;
 use Filament\Support\Components\Contracts\HasEmbeddedView;
 use Filament\Support\Enums\GridDirection;
+use Filament\Support\Enums\IconSize;
+use Filament\Support\Enums\Size;
+use Filament\Support\Facades\FilamentAsset;
 use Filament\Support\Facades\FilamentIcon;
 use Filament\Support\Icons\Heroicon;
 use Filament\Support\View\ComponentAttributeBag as FilamentComponentAttributeBag;
@@ -43,6 +46,28 @@ class ToggleButtons extends Field implements Contracts\CanDisableOptions, HasEmb
     protected bool | Closure $isGrouped = false;
 
     protected bool | Closure $areButtonLabelsHidden = false;
+
+    protected bool | Closure $isFullWidth = false;
+
+    protected Size | string | Closure | null $size = null;
+
+    public function size(Size | string | Closure | null $size): static
+    {
+        $this->size = $size;
+
+        return $this;
+    }
+
+    public function getSize(): Size | string
+    {
+        $size = $this->evaluate($this->size);
+
+        if (! $size instanceof Size) {
+            $size = filled($size) ? (Size::tryFrom($size) ?? $size) : Size::Medium;
+        }
+
+        return $size;
+    }
 
     public function grouped(bool | Closure $condition = true): static
     {
@@ -76,11 +101,26 @@ class ToggleButtons extends Field implements Contracts\CanDisableOptions, HasEmb
         $isDisabled = $this->isDisabled();
         $isInline = $this->isInline();
         $isMultiple = $this->isMultiple();
+        $isRequired = $this->isRequired();
+        $isToggleButton = (! $isMultiple) && (! $isRequired);
         $statePath = $this->getStatePath();
+        $state = $this->getRawState();
+        $state = is_scalar($state) ? (string) $state : null;
         $areButtonLabelsHidden = $this->areButtonLabelsHidden();
+        $size = $this->getSize();
+        $iconSize = match ($size) {
+            Size::ExtraSmall, Size::Small => IconSize::Small,
+            default => null,
+        };
         $wireModelAttribute = $this->applyStateBindingModifiers('wire:model');
-        $extraInputAttributeBag = $this->getExtraInputAttributeBag()->class(['fi-fo-toggle-buttons-input']);
+        $extraInputAttributeBag = $this->getExtraInputAttributeBag()
+            ->merge([
+                'aria-describedby' => $this->getAccessibilityAttributes()['aria-describedby'],
+                'aria-invalid' => $isToggleButton ? null : $this->getAccessibilityAttributes()['aria-invalid'],
+            ], escape: false)
+            ->class(['fi-fo-toggle-buttons-input' => ! $isToggleButton]);
         $isAutofocused = $this->isAutofocused();
+        $isFullWidth = $this->isFullWidth();
 
         $containerAttributes = $this->getExtraAttributeBag();
 
@@ -90,12 +130,23 @@ class ToggleButtons extends Field implements Contracts\CanDisableOptions, HasEmb
 
         $containerAttributes = $containerAttributes
             ->merge([
-                'aria-labelledby' => "{$id}-label",
-                'role' => $isMultiple ? 'group' : 'radiogroup',
+                'aria-describedby' => $this->getAccessibilityAttributes()['aria-describedby'] ?? null,
+                'aria-invalid' => (! $isMultiple) && $isRequired ? $this->getAccessibilityAttributes()['aria-invalid'] : null,
+                'aria-labelledby' => filled($this->getLabel()) ? e("{$id}-label") : null,
+                'aria-required' => (! $isMultiple) && $isRequired && (! $isDisabled) ? 'true' : null,
+                'role' => (! $isMultiple) && $isRequired ? 'radiogroup' : 'group',
+                'wire:key' => $this->getLivewireKey() . '.' . ($isToggleButton ? 'buttons' : 'inputs'),
+                'x-load' => $isToggleButton ? '' : null,
+                'x-load-src' => $isToggleButton ? e(FilamentAsset::getAlpineComponentSrc('toggle-buttons', 'filament/forms')) : null,
+                'x-data' => ! $isToggleButton ? null : e('toggleButtonsFormComponent({
+                    stateBindingModifiers: ' . Js::from($this->getStateBindingModifiers()) . ',
+                    state: $wire.$entangle(' . Js::from($statePath) . ', false),
+                })'),
             ], escape: false)
             ->class([
                 'fi-fo-toggle-buttons',
                 'fi-inline' => $isInline,
+                'fi-width-full' => $isFullWidth,
             ]);
 
         $first = true;
@@ -103,6 +154,9 @@ class ToggleButtons extends Field implements Contracts\CanDisableOptions, HasEmb
         ob_start(); ?>
 
         <div <?= $containerAttributes->toHtml() ?>>
+            <?php if ($isToggleButton) { ?>
+                <input type="checkbox" hidden x-ref="submissionLock" />
+            <?php } ?>
             <?php foreach ($this->getOptions() as $value => $label) { ?>
                 <?php
                     $inputId = "{$id}-{$value}";
@@ -112,48 +166,62 @@ class ToggleButtons extends Field implements Contracts\CanDisableOptions, HasEmb
                 $tooltip = $this->getTooltip($value);
 
                 $buttonAttributes = (new FilamentComponentAttributeBag)
+                    ->merge($isToggleButton ? $extraInputAttributeBag->getAttributes() : [], escape: false)
                     ->merge([
                         'aria-disabled' => $shouldOptionBeDisabled ? 'true' : null,
                         'aria-label' => $areButtonLabelsHidden ? e(trim(strip_tags((string) $label))) : null,
                         'disabled' => $shouldOptionBeDisabled && blank($tooltip),
-                        'for' => e($inputId),
+                        'for' => $isToggleButton ? null : e($inputId),
                     ], escape: false)
                     ->class([
                         'fi-btn',
-                        'fi-size-md',
+                        ($size instanceof Size) ? "fi-size-{$size->value}" : e($size),
                         'fi-disabled' => $shouldOptionBeDisabled,
                     ])
                     ->color(ButtonComponent::class, $color);
                 ?>
 
                 <div class="fi-fo-toggle-buttons-btn-ctn">
+                    <?php if (! $isToggleButton) { ?>
                     <input
                         <?php if ($first && $isAutofocused) { ?> autofocus <?php } ?>
                         <?php if ($shouldOptionBeDisabled) { ?> disabled <?php } ?>
+                        <?php if ($areButtonLabelsHidden) { ?> aria-label="<?= e(trim(strip_tags((string) $label))) ?>" <?php } ?>
                         id="<?= e($inputId) ?>"
-                        <?php if (! $isMultiple) { ?>
-                            name="<?= e($id) ?>"
-                        <?php } ?>
+                        <?php if (! $isMultiple) { ?> name="<?= e($id) ?>" <?php } ?>
                         type="<?= $isMultiple ? 'checkbox' : 'radio' ?>"
                         value="<?= e($value) ?>"
                         <?= $wireModelAttribute ?>="<?= e($statePath) ?>"
-                        <?= $extraInputAttributeBag->toHtml() ?>
+                        <?= $extraInputAttributeBag->merge(['required' => (! $isMultiple) && $isRequired && (! $shouldOptionBeDisabled)], escape: false)->toHtml() ?>
                     />
+                    <?php } ?>
 
-                    <label
+                    <<?= $isToggleButton ? 'button' : 'label' ?>
+                        <?php if ($isToggleButton) { ?>
+                            type="button"
+                            id="<?= e($inputId) ?>"
+                            <?php if ($first && $isAutofocused) { ?> autofocus <?php } ?>
+                            aria-pressed="<?= $state === (string) $value ? 'true' : 'false' ?>"
+                            x-bind:aria-pressed="isSelected(<?= e(Js::from((string) $value)) ?>) ? 'true' : 'false'"
+                            x-bind:disabled="submissionLocked || <?= Js::from($shouldOptionBeDisabled && blank($tooltip)) ?>"
+                            x-on:blur="blur()"
+                            <?php if (! $shouldOptionBeDisabled) { ?>
+                                x-on:click="select(<?= e(Js::from((string) $value)) ?>)"
+                            <?php } ?>
+                        <?php } ?>
                         <?php if (filled($tooltip)) { ?>
                             x-tooltip="{ content: <?= Js::from($tooltip) ?>, theme: $store.theme, allowHTML: <?= Js::from($tooltip instanceof Htmlable) ?> }"
                         <?php } ?>
                         <?= $buttonAttributes->toHtml() ?>
                     >
                         <?php if (filled($icon)) { ?>
-                            <?= generate_icon_html($icon)?->toHtml() ?>
+                            <?= generate_icon_html($icon, size: $iconSize)?->toHtml() ?>
                         <?php } ?>
 
                         <?php if (! $areButtonLabelsHidden) { ?>
                             <?= e($label) ?>
                         <?php } ?>
-                    </label>
+                    </<?= $isToggleButton ? 'button' : 'label' ?>>
                 </div>
                 <?php $first = false; ?>
             <?php } ?>
@@ -167,21 +235,56 @@ class ToggleButtons extends Field implements Contracts\CanDisableOptions, HasEmb
         $id = $this->getId();
         $isDisabled = $this->isDisabled();
         $isMultiple = $this->isMultiple();
+        $isRequired = $this->isRequired();
+        $isToggleButton = (! $isMultiple) && (! $isRequired);
         $statePath = $this->getStatePath();
+        $state = $this->getRawState();
+        $state = is_scalar($state) ? (string) $state : null;
         $areButtonLabelsHidden = $this->areButtonLabelsHidden();
+        $size = $this->getSize();
+        $iconSize = match ($size) {
+            Size::ExtraSmall, Size::Small => IconSize::Small,
+            default => null,
+        };
         $wireModelAttribute = $this->applyStateBindingModifiers('wire:model');
-        $extraInputAttributeBag = $this->getExtraInputAttributeBag()->class(['fi-fo-toggle-buttons-input']);
+        $extraInputAttributeBag = $this->getExtraInputAttributeBag()
+            ->merge([
+                'aria-describedby' => $this->getAccessibilityAttributes()['aria-describedby'],
+                'aria-invalid' => $isToggleButton ? null : $this->getAccessibilityAttributes()['aria-invalid'],
+            ], escape: false)
+            ->class(['fi-fo-toggle-buttons-input' => ! $isToggleButton]);
+        $isFullWidth = $this->isFullWidth();
+        $isAutofocused = $this->isAutofocused();
 
         $containerAttributes = $this->getExtraAttributeBag()
             ->merge([
-                'aria-labelledby' => "{$id}-label",
-                'role' => $isMultiple ? 'group' : 'radiogroup',
+                'aria-describedby' => $this->getAccessibilityAttributes()['aria-describedby'] ?? null,
+                'aria-invalid' => (! $isMultiple) && $isRequired ? $this->getAccessibilityAttributes()['aria-invalid'] : null,
+                'aria-labelledby' => filled($this->getLabel()) ? e("{$id}-label") : null,
+                'aria-required' => (! $isMultiple) && $isRequired && (! $isDisabled) ? 'true' : null,
+                'role' => (! $isMultiple) && $isRequired ? 'radiogroup' : 'group',
+                'wire:key' => $this->getLivewireKey() . '.' . ($isToggleButton ? 'buttons' : 'inputs'),
+                'x-load' => $isToggleButton ? '' : null,
+                'x-load-src' => $isToggleButton ? e(FilamentAsset::getAlpineComponentSrc('toggle-buttons', 'filament/forms')) : null,
+                'x-data' => ! $isToggleButton ? null : e('toggleButtonsFormComponent({
+                    stateBindingModifiers: ' . Js::from($this->getStateBindingModifiers()) . ',
+                    state: $wire.$entangle(' . Js::from($statePath) . ', false),
+                })'),
             ], escape: false)
-            ->class(['fi-fo-toggle-buttons fi-btn-group']);
+            ->class([
+                'fi-fo-toggle-buttons',
+                'fi-btn-group',
+                'fi-width-full' => $isFullWidth,
+            ]);
+
+        $first = true;
 
         ob_start(); ?>
 
         <div <?= $containerAttributes->toHtml() ?>>
+            <?php if ($isToggleButton) { ?>
+                <input type="checkbox" hidden x-ref="submissionLock" />
+            <?php } ?>
             <?php foreach ($this->getOptions() as $value => $label) { ?>
                 <?php
                     $inputId = "{$id}-{$value}";
@@ -191,48 +294,63 @@ class ToggleButtons extends Field implements Contracts\CanDisableOptions, HasEmb
                 $tooltip = $this->getTooltip($value);
 
                 $buttonAttributes = (new FilamentComponentAttributeBag)
+                    ->merge($isToggleButton ? $extraInputAttributeBag->getAttributes() : [], escape: false)
                     ->merge([
                         'aria-disabled' => $shouldOptionBeDisabled ? 'true' : null,
                         'aria-label' => $areButtonLabelsHidden ? e(trim(strip_tags((string) $label))) : null,
                         'disabled' => $shouldOptionBeDisabled && blank($tooltip),
-                        'for' => e($inputId),
+                        'for' => $isToggleButton ? null : e($inputId),
                     ], escape: false)
                     ->class([
                         'fi-btn',
                         'fi-btn-group-btn',
-                        'fi-size-md',
+                        ($size instanceof Size) ? "fi-size-{$size->value}" : e($size),
                         'fi-disabled' => $shouldOptionBeDisabled,
                     ])
                     ->color(ButtonComponent::class, $color);
                 ?>
 
+                <?php if (! $isToggleButton) { ?>
                 <input
+                    <?php if ((! $isMultiple) && $first && $isAutofocused) { ?> autofocus <?php } ?>
                     <?php if ($shouldOptionBeDisabled) { ?> disabled <?php } ?>
+                    <?php if ($areButtonLabelsHidden) { ?> aria-label="<?= e(trim(strip_tags((string) $label))) ?>" <?php } ?>
                     id="<?= e($inputId) ?>"
-                    <?php if (! $isMultiple) { ?>
-                        name="<?= e($id) ?>"
-                    <?php } ?>
+                    <?php if (! $isMultiple) { ?> name="<?= e($id) ?>" <?php } ?>
                     type="<?= $isMultiple ? 'checkbox' : 'radio' ?>"
                     value="<?= e($value) ?>"
-                    wire:loading.attr="disabled"
                     <?= $wireModelAttribute ?>="<?= e($statePath) ?>"
-                    <?= $extraInputAttributeBag->toHtml() ?>
+                    <?= $extraInputAttributeBag->merge(['required' => (! $isMultiple) && $isRequired && (! $shouldOptionBeDisabled)], escape: false)->toHtml() ?>
                 />
+                <?php } ?>
 
-                <label
+                <<?= $isToggleButton ? 'button' : 'label' ?>
+                    <?php if ($isToggleButton) { ?>
+                        type="button"
+                        id="<?= e($inputId) ?>"
+                        <?php if ($first && $isAutofocused) { ?> autofocus <?php } ?>
+                        aria-pressed="<?= $state === (string) $value ? 'true' : 'false' ?>"
+                        x-bind:aria-pressed="isSelected(<?= e(Js::from((string) $value)) ?>) ? 'true' : 'false'"
+                        x-bind:disabled="submissionLocked || <?= Js::from($shouldOptionBeDisabled && blank($tooltip)) ?>"
+                        x-on:blur="blur()"
+                        <?php if (! $shouldOptionBeDisabled) { ?>
+                            x-on:click="select(<?= e(Js::from((string) $value)) ?>)"
+                        <?php } ?>
+                    <?php } ?>
                     <?php if (filled($tooltip)) { ?>
                         x-tooltip="{ content: <?= Js::from($tooltip) ?>, theme: $store.theme, allowHTML: <?= Js::from($tooltip instanceof Htmlable) ?> }"
                     <?php } ?>
                     <?= $buttonAttributes->toHtml() ?>
                 >
                     <?php if (filled($icon)) { ?>
-                        <?= generate_icon_html($icon)?->toHtml() ?>
+                        <?= generate_icon_html($icon, size: $iconSize)?->toHtml() ?>
                     <?php } ?>
 
                     <?php if (! $areButtonLabelsHidden) { ?>
                         <?= e($label) ?>
                     <?php } ?>
-                </label>
+                </<?= $isToggleButton ? 'button' : 'label' ?>>
+                <?php $first = false; ?>
             <?php } ?>
         </div>
 
@@ -273,6 +391,18 @@ class ToggleButtons extends Field implements Contracts\CanDisableOptions, HasEmb
         return (bool) $this->evaluate($this->isInline);
     }
 
+    public function fullWidth(bool | Closure $condition = true): static
+    {
+        $this->isFullWidth = $condition;
+
+        return $this;
+    }
+
+    public function isFullWidth(): bool
+    {
+        return (bool) $this->evaluate($this->isFullWidth);
+    }
+
     public function hiddenButtonLabels(bool | Closure $condition = true): static
     {
         $this->areButtonLabelsHidden = $condition;
@@ -295,6 +425,13 @@ class ToggleButtons extends Field implements Contracts\CanDisableOptions, HasEmb
     public function isMultiple(): bool
     {
         return (bool) $this->evaluate($this->isMultiple);
+    }
+
+    public function getRequiredDescription(): ?string
+    {
+        return ($this->isRequired() && (! $this->isDisabled()))
+            ? __('filament-forms::components.toggle_buttons.required_description')
+            : null;
     }
 
     public function getDefaultState(): mixed

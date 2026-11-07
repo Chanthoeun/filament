@@ -195,13 +195,16 @@ describe('rendering', function (): void {
 });
 
 it('can render `CodeEditor` in the browser', function (): void {
-    retry(10, function (): void {
-        $this->actingAs(User::factory()->create());
+    $this->actingAs(User::factory()->create());
 
-        visit('/code-editor-browser-test')
-            ->assertSee('Test Code Editor')
-            ->assertNoSmoke();
-    });
+    $page = visit('/code-editor-browser-test');
+
+    $page
+        ->assertNoSmoke()
+        ->assertNoAccessibilityIssues();
+
+    $page->inDarkMode()
+        ->assertNoAccessibilityIssues();
 });
 
 class TestComponentWithCodeEditor extends Livewire

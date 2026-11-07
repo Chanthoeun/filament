@@ -1,53 +1,12 @@
 ---
 title: Custom fields
 ---
-import Aside from "@components/Aside.astro"
 
 ## Introduction
 
-Livewire components are PHP classes that have their state stored in the user's browser. When a network request is made, the state is sent to the server, and filled into public properties on the Livewire component class, where it can be accessed in the same way as any other class property in PHP can be.
-
-Imagine you had a Livewire component with a public property called `$name`. You could bind that property to an input field in the HTML of the Livewire component in one of two ways: with the [`wire:model` attribute](https://livewire.laravel.com/docs/properties#data-binding), or by [entangling](https://livewire.laravel.com/docs/javascript#the-wire-object) it with an Alpine.js property:
-
-```blade
-<x-dynamic-component
-    :component="$getFieldWrapperView()"
-    :field="$field"
->
-    <input wire:model="name" />
-    
-    <!-- Or -->
-    
-    <div x-data="{ state: $wire.$entangle('name') }">
-        <input x-model="state" />
-    </div>
-</x-dynamic-component>
-```
-
-When the user types into the input field, the `$name` property is updated in the Livewire component class. When the user submits the form, the `$name` property is sent to the server, where it can be saved.
-
-This is the basis of how fields work in Filament. Each field is assigned to a public property in the Livewire component class, which is where the state of the field is stored. We call the name of this property the "state path" of the field. You can access the state path of a field using the `$getStatePath()` function in the field's view:
-
-```blade
-<x-dynamic-component
-    :component="$getFieldWrapperView()"
-    :field="$field"
->
-    <input wire:model="{{ $getStatePath() }}" />
-
-    <!-- Or -->
-    
-    <div x-data="{ state: $wire.$entangle('{{ $getStatePath() }}') }">
-        <input x-model="state" />
-    </div>
-</x-dynamic-component>
-```
-
-If your component heavily relies on third party libraries, we advise that you asynchronously load the Alpine.js component using the Filament asset system. This ensures that the Alpine.js component is only loaded when it's needed, and not on every page load. To find out how to do this, check out our [Assets documentation](../advanced/assets#asynchronous-alpinejs-components).
+You may create your own custom field classes and views, which you can reuse across your project, and even release as a plugin to the community.
 
 ## Custom field classes
-
-You may create your own custom field classes and views, which you can reuse across your project, and even release as a plugin to the community.
 
 To create a custom field class and view, you may use the following command:
 
@@ -71,6 +30,29 @@ It will also create a view file at `resources/views/filament/forms/components/lo
 <Aside variant="info">
     Filament form fields are **not** Livewire components. Defining public properties and methods on a form field class will not make them accessible in the Blade view.
 </Aside>
+
+## Binding a field to its state
+
+A field's state is stored in a public property on its Livewire component. Use `$getStatePath()` in the field's view to bind to the correct property, including when the field is nested inside a repeater or another component. You can bind with [`wire:model`](https://livewire.laravel.com/docs/properties#data-binding) or [entangle an Alpine.js property](https://livewire.laravel.com/docs/javascript#the-wire-object):
+
+```blade
+<x-dynamic-component
+    :component="$getFieldWrapperView()"
+    :field="$field"
+>
+    <input wire:model="{{ $getStatePath() }}" />
+
+    <!-- Or -->
+
+    <div x-data="{ state: $wire.$entangle('{{ $getStatePath() }}') }">
+        <input x-model="state" />
+    </div>
+</x-dynamic-component>
+```
+
+See [obeying state binding modifiers](#obeying-state-binding-modifiers) to support options such as `live()` and `debounce()`. Preserve the field's [accessibility associations](overview#preserving-accessibility-in-custom-field-views) when creating its control markup.
+
+If your field uses third-party JavaScript libraries, you can [load its Alpine.js component asynchronously](../advanced/assets#asynchronous-alpinejs-components) so those assets are only loaded when needed.
 
 ## Accessing the state of another component in the Blade view
 
@@ -230,7 +212,7 @@ class LocationPicker extends Field
 }
 ```
 
-Now, you can pass a static value or a function to the `zoom()` method, and [inject any utility](overview#component-utility-injection) as a parameter:
+Now, you can pass a static value or a function to the `zoom()` method, and [inject any utility](overview#field-utility-injection) as a parameter:
 
 ```php
 use App\Filament\Forms\Components\LocationPicker;
@@ -264,21 +246,21 @@ Filament provides a `$applyStateBindingModifiers()` function that you may use in
 
 ## Calling field methods from JavaScript
 
-Sometimes you need to call a method on the field class from JavaScript in the Blade view. For example, you might want to fetch data asynchronously, process a file upload, or perform some server-side computation. Filament provides a way to expose methods on your field class to JavaScript using the `#[ExposedLivewireMethod]` attribute.
+You can call methods on your custom field class from JavaScript in a Blade view. For example, a location picker might call a geocoding service in PHP. Expose the method using `#[Exposed]`.
 
 ### Exposing a method
 
-To expose a method to JavaScript, add the `#[ExposedLivewireMethod]` attribute to a public method on your custom field class:
+Add `#[Exposed]` to a public instance method on your field:
 
 ```php
 use Filament\Forms\Components\Field;
-use Filament\Support\Components\Attributes\ExposedLivewireMethod;
+use Filament\Support\Components\Attributes\Exposed;
 
 class LocationPicker extends Field
 {
     protected string $view = 'filament.forms.components.location-picker';
 
-    #[ExposedLivewireMethod]
+    #[Exposed]
     public function geocodeAddress(string $address): array
     {
         // Perform geocoding logic...
@@ -291,19 +273,21 @@ class LocationPicker extends Field
 }
 ```
 
-<Aside variant="info">
-    Only methods marked with `#[ExposedLivewireMethod]` can be called from JavaScript. This is a security measure to prevent arbitrary method execution.
+<Aside variant="warning">
+    Only methods marked with `#[Exposed]` can be called from JavaScript. The attribute does not authorize access to the method's data or operations. Validate client-supplied arguments and [authorize sensitive operations](../advanced/security#authorization) inside the method.
+
+    Exposed methods remain callable when the field is [disabled](overview#disabling-a-field), since read methods may still be needed to display its value. If a method changes the field's value and should respect its disabled state, check `$this->isDisabled()` before making changes.
 </Aside>
+
+Arguments must be a JSON-serializable object keyed by PHP parameter name. Filament binds each call to the current field, including nested repeater instances. The returned promise resolves to the method's return value, or `null` if the component or exposed method is missing. Calls make Livewire requests and can send pending deferred edits, regardless of `live()`.
+
+Use the PHP method's casing in JavaScript. Built-in utility and Alpine magic names are reserved; a method named `get`, for example, is available through `$callSchemaComponentMethod()` without replacing `$get()`. Do not register Alpine magics with the same names as your exposed methods.
 
 ### Calling the method from JavaScript
 
-In your Blade view, you may call the exposed method using `$wire.callSchemaComponentMethod()`. The first argument is the component's key (available via `$getKey()`), and the second argument is the method name. You may pass arguments as a third argument:
+In your Blade view, call the exposed method using its `$`-prefixed name. Pass an object keyed by PHP parameter name. The utility is bound to this field, so you do not need its key. You can also use `$callSchemaComponentMethod('geocodeAddress', { address: this.address })`, including when a method name collides with a built-in utility such as `$get()`:
 
 ```blade
-@php
-    $key = $getKey();
-@endphp
-
 <x-dynamic-component
     :component="$getFieldWrapperView()"
     :field="$field"
@@ -313,9 +297,7 @@ In your Blade view, you may call the exposed method using `$wire.callSchemaCompo
             address: '',
             coordinates: null,
             async geocode() {
-                this.coordinates = await $wire.callSchemaComponentMethod(
-                    @js($key),
-                    'geocodeAddress',
+                this.coordinates = await this.$geocodeAddress(
                     { address: this.address },
                 )
             },
@@ -333,18 +315,18 @@ In your Blade view, you may call the exposed method using `$wire.callSchemaCompo
 
 ### Preventing re-renders
 
-By default, calling an exposed method will trigger a re-render of the Livewire component. If your method doesn't need to update the UI, you may add Livewire's `#[Renderless]` attribute alongside `#[ExposedLivewireMethod]` to skip the re-render:
+By default, calling an exposed method triggers a re-render of the Livewire component. If your method only returns data and does not change state or PHP props that need rendering, add Livewire's `#[Renderless]` attribute. Other pending updates or calls in the same request may still require rendering:
 
 ```php
 use Filament\Forms\Components\Field;
-use Filament\Support\Components\Attributes\ExposedLivewireMethod;
+use Filament\Support\Components\Attributes\Exposed;
 use Livewire\Attributes\Renderless;
 
 class LocationPicker extends Field
 {
     protected string $view = 'filament.forms.components.location-picker';
 
-    #[ExposedLivewireMethod]
+    #[Exposed]
     #[Renderless]
     public function geocodeAddress(string $address): array
     {

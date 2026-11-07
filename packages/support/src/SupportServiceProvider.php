@@ -24,12 +24,14 @@ use Filament\Support\Enums\GridDirection;
 use Filament\Support\Facades\FilamentAsset;
 use Filament\Support\Facades\FilamentColor;
 use Filament\Support\Icons\IconManager;
+use Filament\Support\Livewire\MethodAccess;
 use Filament\Support\Livewire\Partials\DataStoreOverride;
 use Filament\Support\Livewire\Partials\PartialsComponentHook;
 use Filament\Support\View\Components\Contracts\HasColor;
 use Filament\Support\View\DefaultLoadingIndicator;
 use Filament\Support\View\ViewManager;
 use Illuminate\Foundation\Console\AboutCommand;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
@@ -45,6 +47,8 @@ use Spatie\LaravelPackageTools\PackageServiceProvider;
 use Symfony\Component\HtmlSanitizer\HtmlSanitizer;
 use Symfony\Component\HtmlSanitizer\HtmlSanitizerConfig;
 use Symfony\Component\HtmlSanitizer\HtmlSanitizerInterface;
+
+use function Livewire\before;
 
 class SupportServiceProvider extends PackageServiceProvider
 {
@@ -132,7 +136,7 @@ class SupportServiceProvider extends PackageServiceProvider
             ),
         );
 
-        $this->app->scoped(
+        $this->app->bind(
             'originalRequest',
             function () {
                 if (! Livewire::isLivewireRequest()) {
@@ -151,7 +155,7 @@ class SupportServiceProvider extends PackageServiceProvider
             },
         );
 
-        $this->app->bind(DataStore::class, DataStoreOverride::class);
+        $this->app->singleton(DataStore::class, DataStoreOverride::class);
         $this->app->bind(LoadingIndicator::class, DefaultLoadingIndicator::class);
 
         $this->callAfterResolving(BladeIconsFactory::class, function (BladeIconsFactory $factory): void {
@@ -165,6 +169,8 @@ class SupportServiceProvider extends PackageServiceProvider
     public function packageBooted(): void
     {
         app('livewire')->componentHook(new PartialsComponentHook);
+
+        before('call', app(MethodAccess::class));
 
         FilamentAsset::register([
             Js::make('support', __DIR__ . '/../dist/index.js'),
@@ -267,7 +273,7 @@ class SupportServiceProvider extends PackageServiceProvider
 
             $start = array_filter($start);
 
-            $order = array_filter($order);
+            $order = Arr::whereNotNull($order);
 
             return $this
                 ->class([
@@ -466,7 +472,7 @@ class SupportServiceProvider extends PackageServiceProvider
                         return '<options=bold>NOT AVAILABLE</>';
                     }
 
-                    $path = app()->bootstrapPath('cache/filament/panels');
+                    $path = (config('filament.cache_path') ?? base_path('bootstrap/cache/filament')) . DIRECTORY_SEPARATOR . 'panels';
 
                     return File::isDirectory($path) && ! File::isEmptyDirectory($path)
                         ? '<fg=green;options=bold>CACHED</>'

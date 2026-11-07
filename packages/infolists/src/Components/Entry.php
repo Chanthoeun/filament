@@ -12,10 +12,12 @@ use Filament\Schemas\Components\Concerns\HasName;
 use Filament\Schemas\Schema;
 use Filament\Support\Concerns\HasAlignment;
 use Filament\Support\Concerns\HasPlaceholder;
+use Filament\Support\Concerns\HasRelatedRecord;
 use Filament\Support\Enums\Alignment;
 use Filament\Support\Enums\Size;
 use Filament\Support\View\ComponentAttributeBag as FilamentComponentAttributeBag;
 use Illuminate\Contracts\Support\Htmlable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\View\ComponentSlot;
 use LogicException;
 
@@ -34,6 +36,7 @@ class Entry extends Component
     }
     use HasName;
     use HasPlaceholder;
+    use HasRelatedRecord;
 
     protected string $viewIdentifier = 'entry';
 
@@ -90,6 +93,14 @@ class Entry extends Component
     public function getState(): mixed
     {
         return $this->getConstantState();
+    }
+
+    /**
+     * @return array<Model>
+     */
+    protected function getRelatedRecords(): array
+    {
+        return $this->relatedRecords;
     }
 
     public function getLabel(): string | Htmlable | null
@@ -283,10 +294,17 @@ class Entry extends Component
         $belowLabelSchema = $this->getChildSchema($this::BELOW_LABEL_SCHEMA_KEY)?->toHtmlString();
         $beforeLabelSchema = $this->getChildSchema($this::BEFORE_LABEL_SCHEMA_KEY)?->toHtmlString();
         $afterLabelSchema = $this->getChildSchema($this::AFTER_LABEL_SCHEMA_KEY)?->toHtmlString();
-        $beforeContentSchema = $this->getChildSchema($this::BEFORE_CONTENT_SCHEMA_KEY)?->toHtmlString();
+
+        $aboveContentSchema = $this->getChildSchema($this::ABOVE_CONTENT_SCHEMA_KEY);
+        $hasAboveContentSchema = $this->hasChildSchemaConfiguration($this::ABOVE_CONTENT_SCHEMA_KEY) || $aboveContentSchema;
+
+        $beforeContentSchema = $this->getChildSchema($this::BEFORE_CONTENT_SCHEMA_KEY);
+        $hasBeforeContentSchema = $this->hasChildSchemaConfiguration($this::BEFORE_CONTENT_SCHEMA_KEY) || $beforeContentSchema;
+        $beforeContentSchema = $beforeContentSchema?->toHtmlString();
+
         $afterContentSchema = $this->getChildSchema($this::AFTER_CONTENT_SCHEMA_KEY)?->toHtmlString();
 
-        $attributes = $this->getExtraEntryWrapperAttributesBag()
+        $attributes = $this->getExtraEntryWrapperAttributeBag()
             ->class([
                 'fi-in-entry',
                 'fi-in-entry-has-inline-label' => $hasInlineLabel,
@@ -336,10 +354,18 @@ class Entry extends Component
             <?php } ?>
 
             <div class="fi-in-entry-content-col">
-                <?= $this->getChildSchema($this::ABOVE_CONTENT_SCHEMA_KEY)?->toHtml() ?>
+                <?php if ($hasAboveContentSchema) { ?>
+                    <div class="fi-in-entry-content-slot">
+                        <?= $aboveContentSchema?->toHtml() ?>
+                    </div>
+                <?php } ?>
 
                 <div class="fi-in-entry-content-ctn" role="definition">
-                    <?= $beforeContentSchema?->toHtml() ?>
+                    <?php if ($hasBeforeContentSchema) { ?>
+                        <div class="fi-in-entry-content-slot">
+                            <?= $beforeContentSchema?->toHtml() ?>
+                        </div>
+                    <?php } ?>
 
                     <<?= $wrapperTag ?> <?php if ($wrapperTag === 'a') {
                         echo generate_href_html($url, $this->shouldOpenUrlInNewTab())->toHtml();

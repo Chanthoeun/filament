@@ -1,13 +1,12 @@
 ---
 title: Deleting records
 ---
-import AutoScreenshot from "@components/AutoScreenshot.astro"
 
-<AutoScreenshot name="panels/resources/deleting" alt="A delete confirmation modal" version="4.x" />
+<AutoScreenshot name="panels/resources/deleting" alt="A delete confirmation modal" />
 
 ## Handling soft-deletes
 
-<AutoScreenshot name="panels/resources/trashed" alt="A resource listing with the trashed filter" version="4.x" />
+<AutoScreenshot name="panels/resources/trashed" alt="A resource listing with the trashed filter" />
 
 ### Creating a resource with soft-delete
 
@@ -77,14 +76,16 @@ public static function getRecordRouteBindingEloquentQuery(): Builder
 Now, update the Edit page class if you have one:
 
 ```php
-use Filament\Actions;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\ForceDeleteAction;
+use Filament\Actions\RestoreAction;
 
 protected function getHeaderActions(): array
 {
     return [
-        Actions\DeleteAction::make(),
-        Actions\ForceDeleteAction::make(),
-        Actions\RestoreAction::make(),
+        DeleteAction::make(),
+        ForceDeleteAction::make(),
+        RestoreAction::make(),
         // ...
     ];
 }
@@ -119,7 +120,7 @@ Users may delete records if the `delete()` method of the model policy returns `t
 
 They also have the ability to bulk-delete records if the `deleteAny()` method of the policy returns `true`. Filament uses the `deleteAny()` method because iterating through multiple records and checking the `delete()` policy is not very performant.
 
-You can use the `authorizeIndividualRecords()` method on the `BulkDeleteAction` to check the `delete()` policy for each record individually.
+You can use the `authorizeIndividualRecords()` method on the `DeleteBulkAction` to check the `delete()` policy for each record individually.
 
 ### Authorizing soft-deletes
 

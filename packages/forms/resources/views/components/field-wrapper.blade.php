@@ -21,6 +21,7 @@
 
 @php
     use Filament\Forms\Components\Contracts\HasNestedRecursiveValidationRules;
+    use Filament\Forms\Components\Field;
     use Filament\Support\Enums\VerticalAlignment;
     use Illuminate\Support\Arr;
     use Illuminate\View\ComponentSlot;
@@ -44,10 +45,21 @@
     $belowLabelSchema = $field?->getChildSchema($field::BELOW_LABEL_SCHEMA_KEY)?->toHtmlString();
     $beforeLabelSchema = $field?->getChildSchema($field::BEFORE_LABEL_SCHEMA_KEY)?->toHtmlString();
     $afterLabelSchema = $field?->getChildSchema($field::AFTER_LABEL_SCHEMA_KEY)?->toHtmlString();
-    $aboveContentSchema = $field?->getChildSchema($field::ABOVE_CONTENT_SCHEMA_KEY)?->toHtmlString();
+
+    $aboveContentSchema = $field?->getChildSchema($field::ABOVE_CONTENT_SCHEMA_KEY);
+    $hasAboveContentSchema = $field?->hasChildSchemaConfiguration($field::ABOVE_CONTENT_SCHEMA_KEY) || $aboveContentSchema;
+    $aboveContentSchema = $aboveContentSchema?->toHtmlString();
+
     $belowContentSchema = $field?->getChildSchema($field::BELOW_CONTENT_SCHEMA_KEY)?->toHtmlString();
-    $beforeContentSchema = $field?->getChildSchema($field::BEFORE_CONTENT_SCHEMA_KEY)?->toHtmlString();
-    $afterContentSchema = $field?->getChildSchema($field::AFTER_CONTENT_SCHEMA_KEY)?->toHtmlString();
+
+    $beforeContentSchema = $field?->getChildSchema($field::BEFORE_CONTENT_SCHEMA_KEY);
+    $hasBeforeContentSchema = $field?->hasChildSchemaConfiguration($field::BEFORE_CONTENT_SCHEMA_KEY) || $beforeContentSchema;
+    $beforeContentSchema = $beforeContentSchema?->toHtmlString();
+
+    $afterContentSchema = $field?->getChildSchema($field::AFTER_CONTENT_SCHEMA_KEY);
+    $hasAfterContentSchema = $field?->hasChildSchemaConfiguration($field::AFTER_CONTENT_SCHEMA_KEY) || $afterContentSchema;
+    $afterContentSchema = $afterContentSchema?->toHtmlString();
+
     $aboveErrorMessageSchema = $field?->getChildSchema($field::ABOVE_ERROR_MESSAGE_SCHEMA_KEY)?->toHtmlString();
     $belowErrorMessageSchema = $field?->getChildSchema($field::BELOW_ERROR_MESSAGE_SCHEMA_KEY)?->toHtmlString();
 
@@ -82,7 +94,7 @@
         <{{ $labelTag }}
             @if ($labelTag === 'label')
                 for="{{ $id }}"
-            @else
+            @elseif (filled($id))
                 id="{{ $id }}-label"
             @endif
             class="fi-fo-field-label fi-sr-only"
@@ -112,7 +124,7 @@
                     <{{ $labelTag }}
                         @if ($labelTag === 'label')
                             for="{{ $id }}"
-                        @else
+                        @elseif (filled($id))
                             id="{{ $id }}-label"
                         @endif
                         class="fi-fo-field-label"
@@ -139,11 +151,24 @@
 
     @if ((! \Filament\Support\is_slot_empty($slot)) || $hasError || $aboveContentSchema || $belowContentSchema || $beforeContentSchema || $afterContentSchema || $aboveErrorMessageSchema || $belowErrorMessageSchema)
         <div class="fi-fo-field-content-col">
-            {{ $aboveContentSchema }}
+            @if ($hasAboveContentSchema)
+                <div class="fi-fo-field-content-slot">
+                    {{ $aboveContentSchema }}
+                </div>
+            @endif
 
-            @if ($beforeContentSchema || $afterContentSchema)
-                <div class="fi-fo-field-content-ctn">
-                    {{ $beforeContentSchema }}
+            @if ($hasBeforeContentSchema || $hasAfterContentSchema)
+                <div
+                    @class([
+                        'fi-fo-field-content-ctn',
+                        'fi-empty' => ! ($beforeContentSchema || $afterContentSchema),
+                    ])
+                >
+                    @if ($hasBeforeContentSchema)
+                        <div class="fi-fo-field-content-slot">
+                            {{ $beforeContentSchema }}
+                        </div>
+                    @endif
 
                     <div class="fi-fo-field-content">
                         {{ $slot }}
@@ -162,6 +187,9 @@
 
                 @if (filled($errorMessages))
                     <ul
+                        @if (filled($id))
+                            id="{{ $id }}-error"
+                        @endif
                         data-validation-error
                         class="fi-fo-field-wrp-error-list"
                     >
@@ -177,6 +205,9 @@
                     </ul>
                 @elseif ($areHtmlErrorMessagesAllowed)
                     <div
+                        @if (filled($id))
+                            id="{{ $id }}-error"
+                        @endif
                         data-validation-error
                         class="fi-fo-field-wrp-error-message"
                     >
@@ -184,6 +215,9 @@
                     </div>
                 @else
                     <p
+                        @if (filled($id))
+                            id="{{ $id }}-error"
+                        @endif
                         data-validation-error
                         class="fi-fo-field-wrp-error-message"
                     >
@@ -194,5 +228,11 @@
                 {{ $belowErrorMessageSchema }}
             @endif
         </div>
+    @endif
+
+    @if (($field instanceof Field) && filled($requiredDescription = $field->getRequiredDescription()))
+        <span id="{{ $id }}-required" class="fi-sr-only">
+            {{ $requiredDescription }}
+        </span>
     @endif
 </div>

@@ -45,8 +45,16 @@
         @apply bg-transparent;
     }
 
+    & .filepond--file-info-sub {
+        @apply opacity-100;
+    }
+
     & .filepond--drop-label {
         @apply h-auto! p-3!;
+    }
+
+    & .filepond--drop-label[style*='visibility: hidden'] {
+        @apply min-h-0!;
     }
 
     & .filepond--drop-label label {

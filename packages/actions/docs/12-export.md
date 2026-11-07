@@ -1,9 +1,6 @@
 ---
 title: Export action
 ---
-import Aside from "@components/Aside.astro"
-import AutoScreenshot from "@components/AutoScreenshot.astro"
-import UtilityInjection from "@components/UtilityInjection.astro"
 
 ## Introduction
 
@@ -36,7 +33,7 @@ ExportAction::make()
     ->exporter(ProductExporter::class)
 ```
 
-<AutoScreenshot name="actions/export-action/modal" alt="Export action modal" version="4.x" />
+<AutoScreenshot name="actions/export-action/modal" alt="Export action modal" />
 
 If you want to add this action to the header of a table, you may do so like this:
 
@@ -219,7 +216,7 @@ ExportColumn::make('amount_including_vat')
     })
 ```
 
-<UtilityInjection set="exportColumns" version="4.x">As well as `$record`, the `state()` function can inject various utilities as parameters.</UtilityInjection>
+<UtilityInjection set="exportColumns">As well as `$record`, the `state()` function can inject various utilities as parameters.</UtilityInjection>
 
 ### Formatting the value of an export column
 
@@ -232,7 +229,7 @@ ExportColumn::make('status')
     ->formatStateUsing(fn (string $state): string => __("statuses.{$state}"))
 ```
 
-<UtilityInjection set="exportColumns" version="4.x" extras="State;;mixed;;$state;;The state to format.">As well as `$state`, the `formatStateUsing()` function can inject various utilities as parameters.</UtilityInjection>
+<UtilityInjection set="exportColumns" extras="State;;mixed;;$state;;The state to format.">As well as `$state`, the `formatStateUsing()` function can inject various utilities as parameters.</UtilityInjection>
 
 If there are [multiple values](#exporting-multiple-values-in-a-cell) in the column, the function will be called for each value.
 
@@ -247,7 +244,7 @@ ExportColumn::make('description')
     ->limit(50)
 ```
 
-<UtilityInjection set="exportColumns" version="4.x">As well as allowing a static value, the `limit()` method also accepts a function to dynamically calculate it. You can inject various utilities into the function as parameters.</UtilityInjection>
+<UtilityInjection set="exportColumns">As well as allowing a static value, the `limit()` method also accepts a function to dynamically calculate it. You can inject various utilities into the function as parameters.</UtilityInjection>
 
 #### Limiting word count
 
@@ -260,7 +257,7 @@ ExportColumn::make('description')
     ->words(10)
 ```
 
-<UtilityInjection set="exportColumns" version="4.x">As well as allowing a static value, the `words()` method also accepts a function to dynamically calculate it. You can inject various utilities into the function as parameters.</UtilityInjection>
+<UtilityInjection set="exportColumns">As well as allowing a static value, the `words()` method also accepts a function to dynamically calculate it. You can inject various utilities into the function as parameters.</UtilityInjection>
 
 #### Adding a prefix or suffix
 
@@ -274,7 +271,7 @@ ExportColumn::make('domain')
     ->suffix('.com')
 ```
 
-<UtilityInjection set="exportColumns" version="4.x">As well as allowing static values, the `prefix()` and `suffix()` methods also accept functions to dynamically calculate them. You can inject various utilities into the functions as parameters.</UtilityInjection>
+<UtilityInjection set="exportColumns">As well as allowing static values, the `prefix()` and `suffix()` methods also accept functions to dynamically calculate them. You can inject various utilities into the functions as parameters.</UtilityInjection>
 
 ### Exporting multiple values in a cell
 
@@ -484,13 +481,13 @@ public static function modifyQuery(Builder $query): Builder
 
 ### Customizing the storage disk
 
-By default, exported files will be uploaded to the storage disk defined in the [configuration file](../introduction/installation#publishing-configuration), which is `public` by default. You can set the `FILESYSTEM_DISK` environment variable to change this.
+Exports use the storage disk defined in the [configuration file](../introduction/installation#publishing-configuration), which defaults to `local`. You can change it using the `FILESYSTEM_DISK` environment variable. If the configured disk is `public` and a `local` disk exists, exports use `local` instead. Explicitly setting `fileDisk('public')` overrides that fallback.
 
-While using the `public` disk a good default for many parts of Filament, using it for exports would result in exported files being stored in a public location. As such, if the default filesystem disk is `public` and a `local` disk exists in your `config/filesystems.php`, Filament will use the `local` disk for exports instead. If you override the disk to be `public` for an `ExportAction` or inside an exporter class, Filament will use that.
+<Aside variant="warning">
+    Use private storage for exports, such as a non-public `local` disk or `s3` with a private access policy. Filament's [download authorization](#authorization) does not protect files exposed directly by your storage disk or web server.
+</Aside>
 
-In production, you should use a disk such as `s3` with a private access policy, to prevent unauthorized access to the exported files.
-
-If you want to use a different disk for a specific export, you can pass the disk name to the `disk()` method on the action:
+To use a different disk for a specific export, pass its name to `fileDisk()` on the action:
 
 ```php
 use Filament\Actions\ExportAction;
@@ -508,10 +505,10 @@ use Filament\Actions\ExportAction;
 ExportAction::configureUsing(fn (ExportAction $action) => $action->fileDisk('s3'));
 ```
 
-Alternatively, you can override the `getFileDisk()` method on the exporter class, returning the name of the disk:
+Alternatively, you can override the `getFileDiskName()` method on the exporter class, returning the name of the disk:
 
 ```php
-public function getFileDisk(): string
+public function getFileDiskName(): string
 {
     return 's3';
 }
@@ -545,7 +542,7 @@ public function getFileName(Export $export): string
 
 ## Using export options
 
-The export action can render extra form components that the user can interact with when exporting a CSV. This can be useful to allow the user to customize the behavior of the exporter. For instance, you might want a user to be able to choose the format of specific columns when exporting. To do this, you can return options form components from the `getOptionsFormComponents()` method on your exporter class:
+The export action can render extra form components that the user can interact with when exporting a CSV. This can be useful to allow the user to customize the behavior of the exporter. For instance, you might want a user to be able to choose the format of specific columns when exporting. To do this, you can return schema components from the `getOptionsFormComponents()` method on your exporter class:
 
 ```php
 use Filament\Forms\Components\TextInput;
@@ -573,7 +570,7 @@ ExportAction::make()
     ])
 ```
 
-<UtilityInjection set="actions" version="4.x">As well as allowing a static value, the `options()` method also accepts a function to dynamically calculate it. You can inject various utilities into the function as parameters.</UtilityInjection>
+<UtilityInjection set="actions">As well as allowing a static value, the `options()` method also accepts a function to dynamically calculate it. You can inject various utilities into the function as parameters.</UtilityInjection>
 
 Now, you can access the data from these options inside the exporter class, by injecting the `$options` argument into any closure function. For example, you might want to use it inside `formatStateUsing()` to [format a column's value](#formatting-the-value-of-an-export-column):
 
@@ -660,7 +657,7 @@ ExportAction::make()
     ->chunkSize(250)
 ```
 
-<UtilityInjection set="actions" version="4.x">As well as allowing a static value, the `chunkSize()` method also accepts a function to dynamically calculate it. You can inject various utilities into the function as parameters.</UtilityInjection>
+<UtilityInjection set="actions">As well as allowing a static value, the `chunkSize()` method also accepts a function to dynamically calculate it. You can inject various utilities into the function as parameters.</UtilityInjection>
 
 <Aside variant="tip">
     If you are encountering memory or timeout issues when importing large CSV files, you may wish to reduce the chunk size.
@@ -676,8 +673,6 @@ public static function getCsvDelimiter(): string
     return ';';
 }
 ```
-
-<UtilityInjection set="actions" version="4.x">As well as allowing a static value, the `csvDelimiter()` method also accepts a function to dynamically calculate it. You can inject various utilities into the function as parameters.</UtilityInjection>
 
 You can only specify a single character, otherwise an exception will be thrown.
 
@@ -768,7 +763,7 @@ public function makeXlsxRow(array $values, ?Style $style = null): Row
                 (new Style())->setFontSize(12),
             ),
             default => Cell::fromValue($values[$columnIndex]),
-        },
+        };
     }
     
     return new Row($cells, $style);
@@ -925,10 +920,12 @@ public function getJobConnection(): ?string
 By default, the export system will only process one job at a time from each export. This is to prevent the server from being overloaded, and other jobs from being delayed by large exports. That functionality is defined in the `WithoutOverlapping` middleware on the exporter class:
 
 ```php
+use Illuminate\Queue\Middleware\WithoutOverlapping;
+
 public function getJobMiddleware(): array
 {
     return [
-        (new WithoutOverlapping("export{$this->export->getKey()}"))->expireAfter(600),
+        (new WithoutOverlapping("filament:exports:{$this->export->getKey()}"))->expireAfter(600),
     ];
 }
 ```
@@ -990,6 +987,10 @@ public function getJobBatchName(): ?string
 }
 ```
 
+## Testing
+
+To test exporter row values and export actions, see the [Testing exports](../testing/testing-exports) guide.
+
 ## Authorization
 
 By default, only the user who started the export may download files that get generated. If you'd like to customize the authorization logic, you may create an `ExportPolicy` class, and [register it in your `AuthServiceProvider`](https://laravel.com/docs/authorization#registering-policies):
@@ -1023,7 +1024,7 @@ public function view(User $user, Export $export): bool
 
 The export system does not perform per-record authorization checks. When an export is triggered, all records matching the table query (or the model's full dataset, if used outside a table) are included in the export without consulting your application's [Laravel policies](https://laravel.com/docs/authorization#creating-policies). This means that if a user is allowed to trigger an export, they may receive records they would not normally be authorized to view through your application's UI.
 
-If you need to restrict which records are exported, you should scope the query using the [`modifyQueryUsing()` method](#modifying-the-eloquent-query):
+If you need to restrict which records are exported, you should scope the query using the [`modifyQueryUsing()` method](#modifying-the-export-query):
 
 ```php
 use Illuminate\Database\Eloquent\Builder;
@@ -1043,7 +1044,7 @@ You could also apply [global scopes](https://laravel.com/docs/eloquent#global-sc
 
 Filament's export system writes data to CSV and XLSX files exactly as it is stored in the database, without any transformation. This means that if your database contains values beginning with characters like `=`, `+`, `-`, or `@`, they will appear unchanged in the exported file. When opened in spreadsheet software such as Microsoft Excel or Google Sheets, these values may be interpreted as formulas, which could pose a security risk if your data includes untrusted or user-submitted content. You should ensure that your users are aware of this risk, or sanitize the data before export using the [`formatStateUsing()` method](export#formatting-the-value-of-an-export-column) on each column, for example by prefixing values with a single quote (`'`) to prevent formula interpretation.
 
-Alternatively, you may opt in to Filament's built-in protection. When enabled on a column, any value that begins with a formula-triggering character (`=`, `+`, `-`, `@`, a tab, or a carriage return) is automatically prefixed with a single quote (`'`) so that spreadsheet software treats it as plain text. Enable it using the `preventFormulaInjection()` method on the column:
+Alternatively, you may opt in to Filament's built-in protection. When enabled on a column, strings beginning with a formula-triggering character (`=`, `+`, `-`, `@`, a tab, or a carriage return) are automatically prefixed with a single quote (`'`) so that spreadsheet software treats them as plain text. Purely numeric strings beginning with `+` or `-`, such as `+42` or `-5`, remain unchanged. Enable it using the `preventFormulaInjection()` method on the column:
 
 ```php
 use Filament\Actions\Exports\ExportColumn;
@@ -1067,5 +1068,5 @@ ExportColumn::make('temperature')
 ```
 
 <Aside variant="warning">
-    This protection is **opt in** and disabled by default, because prefixing a single quote alters legitimate data. For example, values such as `-5` or a phone number like `+44 1234 567890` are valid formula triggers and would be rewritten to `'-5` and `'+44 1234 567890`. Only enable it when you are exporting untrusted or user-submitted content, and make sure the transformation is acceptable for the columns you enable it on.
+    This protection is **opt in** and disabled by default, because prefixing a single quote alters legitimate data. For example, a phone number like `+44 1234 567890` begins with a formula trigger and would be rewritten to `'+44 1234 567890`. Only enable it when you are exporting untrusted or user-submitted content, and make sure the transformation is acceptable for the columns you enable it on.
 </Aside>

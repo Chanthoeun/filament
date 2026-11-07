@@ -18,6 +18,7 @@ use Filament\Tests\Fixtures\Models\Team;
 use Filament\Tests\Fixtures\Models\User;
 use Filament\Tests\Tables\TestCase;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Livewire\Component;
 
 use function Filament\Tests\livewire;
@@ -70,7 +71,7 @@ describe('filtering records', function (): void {
             ->assertCanSeeTableRecords($postsWithAuthor->merge($postsWithoutAuthor));
     });
 
-    it('can filter records with no relationship using `hasEmptyRelationshipOption`', function (): void {
+    it('can filter records with no relationship using `hasEmptyRelationshipOption()`', function (): void {
         $author = User::factory()->create();
 
         $postsWithAuthor = Post::factory()->count(3)->create(['author_id' => $author->getKey()]);
@@ -83,7 +84,7 @@ describe('filtering records', function (): void {
             ->assertCanNotSeeTableRecords($postsWithAuthor);
     });
 
-    it('can filter records by specific relationship value using `hasEmptyRelationshipOption`', function (): void {
+    it('can filter records by specific relationship value using `hasEmptyRelationshipOption()`', function (): void {
         $author1 = User::factory()->create();
         $author2 = User::factory()->create();
 
@@ -99,7 +100,7 @@ describe('filtering records', function (): void {
             ->assertCanNotSeeTableRecords($postsWithoutAuthor);
     });
 
-    it('can filter records with no relationship using `hasEmptyRelationshipOption` with `multiple()`', function (): void {
+    it('can filter records with no relationship using `hasEmptyRelationshipOption()` with `multiple()`', function (): void {
         $author = User::factory()->create();
 
         $postsWithAuthor = Post::factory()->count(3)->create(['author_id' => $author->getKey()]);
@@ -112,7 +113,7 @@ describe('filtering records', function (): void {
             ->assertCanNotSeeTableRecords($postsWithAuthor);
     });
 
-    it('can filter records by specific relationship values using `hasEmptyRelationshipOption` with `multiple()`', function (): void {
+    it('can filter records by specific relationship values using `hasEmptyRelationshipOption()` with `multiple()`', function (): void {
         $author1 = User::factory()->create();
         $author2 = User::factory()->create();
         $author3 = User::factory()->create();
@@ -130,7 +131,7 @@ describe('filtering records', function (): void {
             ->assertCanNotSeeTableRecords($postsWithoutAuthor);
     });
 
-    it('can filter records by relationship values combined with empty option using `hasEmptyRelationshipOption` with `multiple()`', function (): void {
+    it('can filter records by relationship values combined with empty option using `hasEmptyRelationshipOption()` with `multiple()`', function (): void {
         $author1 = User::factory()->create();
         $author2 = User::factory()->create();
 
@@ -144,7 +145,118 @@ describe('filtering records', function (): void {
             ->assertCanSeeTableRecords($postsWithAuthor1->merge($postsWithoutAuthor))
             ->assertCanNotSeeTableRecords($postsWithAuthor2);
     });
+
+    it('does not allow an empty relationship option to bypass another filter', function (): void {
+        $author = User::factory()->create();
+
+        $matchingPostWithAuthor = Post::factory()->create(['author_id' => $author->getKey(), 'rating' => 1]);
+        $matchingPostWithoutAuthor = Post::factory()->create(['author_id' => null, 'rating' => 1]);
+        $filteredOutPostWithoutAuthor = Post::factory()->create(['author_id' => null, 'rating' => 5]);
+
+        livewire(TestTableWithMultipleEmptyRelationshipFilter::class)
+            ->filterTable('rating', 1)
+            ->filterTable('author', ['__empty', $author->getKey()])
+            ->assertCanSeeTableRecords([$matchingPostWithAuthor, $matchingPostWithoutAuthor])
+            ->assertCanNotSeeTableRecords([$filteredOutPostWithoutAuthor]);
+    });
 });
+
+describe('indicators', function (): void {
+    it('shows custom relationship labels in applied indicators with injected `Select` utilities', function (): void {
+        $author = User::factory()->create(['name' => 'Jane Author', 'email' => 'jane@example.com']);
+        $otherAuthor = User::factory()->create(['name' => 'Alex Author', 'email' => 'alex@example.com']);
+
+        livewire(TestTableWithRecordLabelSelectFilter::class)
+            ->filterTable('author', $author->getKey())
+            ->assertSee('Author: Jane Author (jane@example.com)')
+            ->set('tableDeferredFilters.author.value', $otherAuthor->getKey())
+            ->assertSee('Author: Jane Author (jane@example.com)')
+            ->assertDontSee('Author: Alex Author (alex@example.com)')
+            ->call('applyTableFilters')
+            ->assertSee('Author: Alex Author (alex@example.com)')
+            ->assertDontSee('Author: Jane Author (jane@example.com)');
+    });
+
+    it('uses `modifyFormFieldUsing()` labels in applied multiple-filter indicators', function (): void {
+        $jane = User::factory()->create(['name' => 'Jane Author', 'email' => 'jane@example.com']);
+        $john = User::factory()->create(['name' => 'John Author', 'email' => 'john@example.com']);
+
+        livewire(TestTableWithMultipleRecordLabelSelectFilter::class)
+            ->filterTable('author', [$jane->getKey(), $john->getKey()])
+            ->assertSee('Author: Jane Author (jane@example.com) & John Author (john@example.com)')
+            ->set('tableDeferredFilters.author.values', [$john->getKey()])
+            ->assertSee('Author: Jane Author (jane@example.com) & John Author (john@example.com)')
+            ->assertDontSee('Author: John Author (john@example.com)')
+            ->call('applyTableFilters')
+            ->assertSee('Author: John Author (john@example.com)')
+            ->assertDontSee('Author: Jane Author (jane@example.com)');
+    });
+
+    it('still shows the title attribute in the indicator without a record label callback', function (): void {
+        $author = User::factory()->create(['name' => 'Jane Author']);
+
+        livewire(TestTableWithSelectFilter::class)
+            ->filterTable('author', $author->getKey())
+            ->assertSee('Author: Jane Author');
+    });
+});
+
+class TestTableWithRecordLabelSelectFilter extends Component implements HasActions, HasSchemas, Tables\Contracts\HasTable
+{
+    use InteractsWithActions;
+    use InteractsWithSchemas;
+    use Tables\Concerns\InteractsWithTable;
+
+    public function table(Table $table): Table
+    {
+        return $table
+            ->query(Post::query())
+            ->columns([
+                Tables\Columns\TextColumn::make('title'),
+            ])
+            ->filters([
+                SelectFilter::make('author')
+                    ->relationship('author', 'email')
+                    ->getOptionLabelFromRecordUsing(static fn (Select $component, User $record): string => "{$record->name} ({$record->getAttribute($component->getRelationshipTitleAttribute())})"),
+            ]);
+    }
+
+    public function render(): View
+    {
+        return view('livewire.table');
+    }
+}
+
+class TestTableWithMultipleRecordLabelSelectFilter extends Component implements HasActions, HasSchemas, Tables\Contracts\HasTable
+{
+    use InteractsWithActions;
+    use InteractsWithSchemas;
+    use Tables\Concerns\InteractsWithTable;
+
+    public function table(Table $table): Table
+    {
+        return $table
+            ->query(Post::query())
+            ->columns([
+                Tables\Columns\TextColumn::make('title'),
+            ])
+            ->filters([
+                SelectFilter::make('author')
+                    ->relationship('author', 'email', modifyQueryUsing: static fn (Builder $query): Builder => $query->orderBy('name'))
+                    ->getOptionLabelFromRecordUsing(static fn (User $record): string => $record->name)
+                    ->modifyFormFieldUsing(static fn (Select $field): Select => $field
+                        ->key('author-picker')
+                        ->getOptionLabelFromRecordUsing(static fn (Select $component, User $record): string => "{$record->name} ({$record->getAttribute($component->getRelationshipTitleAttribute())})"))
+                    ->multiple(),
+            ])
+            ->filtersFormSchema(static fn (array $filters): array => [$filters['author']->key('author-filter')]);
+    }
+
+    public function render(): View
+    {
+        return view('livewire.table');
+    }
+}
 
 class TestTableWithSelectFilter extends Component implements HasActions, HasSchemas, Tables\Contracts\HasTable
 {
@@ -222,6 +334,11 @@ class TestTableWithMultipleEmptyRelationshipFilter extends Component implements 
                 Tables\Columns\TextColumn::make('author.name'),
             ])
             ->filters([
+                SelectFilter::make('rating')
+                    ->options([
+                        1 => '1 Star',
+                        5 => '5 Stars',
+                    ]),
                 SelectFilter::make('author')
                     ->relationship('author', 'name', hasEmptyOption: true)
                     ->multiple(),
@@ -304,16 +421,46 @@ describe('options and properties', function (): void {
         expect($limitedFilter->getOptionsLimit())->toBe(100);
     });
 
-    it('can check `queriesRelationships()` returns `true` when relationship is set', function (): void {
+    it('can check relationship presence with `hasRelationship()` and `queriesRelationships()`', function (): void {
         $withoutRelationship = SelectFilter::make('status')
             ->options(['active' => 'Active']);
 
         $withRelationship = SelectFilter::make('author')
-            ->relationship('author', 'name');
+            ->relationship(fn (): string => 'author', 'name');
 
-        expect($withoutRelationship->queriesRelationships())->toBeFalse();
-        expect($withRelationship->queriesRelationships())->toBeTrue();
+        expect($withoutRelationship->hasRelationship())->toBeFalse()
+            ->and($withoutRelationship->queriesRelationships())->toBeFalse()
+            ->and($withRelationship->hasRelationship())->toBeTrue()
+            ->and($withRelationship->queriesRelationships())->toBeTrue();
+
+        $withRelationship->relationship(name: null, titleAttribute: null);
+
+        expect($withRelationship->hasRelationship())->toBeFalse()
+            ->and($withRelationship->queriesRelationships())->toBeFalse();
     });
+
+    it('can resolve qualified relationship keys with both accessor names', function (string $model, string $relationship, ?string $key, ?string $aliasedKey): void {
+        $table = Table::make(app(TestTableWithSelectFilter::class))->query($model::query());
+        $filter = SelectFilter::make('related')
+            ->table($table)
+            ->relationship($relationship, 'name');
+
+        $relatedModel = $filter->getRelationship()->getRelated();
+        $relatedModel->setTable('related_alias');
+        $query = $relatedModel->newQuery();
+
+        expect($filter->getQualifiedRelatedKeyNameForRelationship())->toBe($key)
+            ->and($filter->getRelationshipKey())->toBe($key)
+            ->and($filter->getQualifiedRelatedKeyNameForRelationship(query: $query))->toBe($aliasedKey)
+            ->and($filter->getRelationshipKey(query: $query))->toBe($aliasedKey);
+    })->with([
+        'belongs to' => [Post::class, 'author', 'users.id', 'related_alias.id'],
+        'belongs to many' => [User::class, 'teams', 'teams.id', 'related_alias.id'],
+        'has one through' => [Post::class, 'teamThroughAuthor', 'teams.id', 'related_alias.id'],
+        'has one through foreign key' => [User::class, 'setting', 'settings.profile_id', 'related_alias.profile_id'],
+        'belongs to through' => [Post::class, 'team', 'teams.id', 'teams.id'],
+        'has one fallback' => [Post::class, 'metadata', null, null],
+    ]);
 
     it('can get `getRelationshipName()` from string', function (): void {
         $filter = SelectFilter::make('author')
@@ -336,7 +483,7 @@ describe('options and properties', function (): void {
         expect($filter->getRelationshipTitleAttribute())->toBe('name');
     });
 
-    it('can check `hasEmptyRelationshipOption()` returns `true` when `hasEmptyOption` is set', function (): void {
+    it('can check `hasEmptyRelationshipOption()` returns `true` when `$hasEmptyOption` is set', function (): void {
         $withoutEmptyOption = SelectFilter::make('author')
             ->relationship('author', 'name');
 
@@ -531,173 +678,176 @@ describe('relationship filtering', function (): void {
             ->assertCanNotSeeTableRecords($postsWithAuthor2);
     });
 
-    class TestTableWithSearchableRelationshipFilter extends Component implements HasActions, HasSchemas, Tables\Contracts\HasTable
-    {
-        use InteractsWithActions;
-        use InteractsWithSchemas;
-        use Tables\Concerns\InteractsWithTable;
-
-        public function table(Table $table): Table
-        {
-            return $table
-                ->query(Post::query())
-                ->columns([
-                    Tables\Columns\TextColumn::make('title'),
-                    Tables\Columns\TextColumn::make('author.name'),
-                ])
-                ->filters([
-                    SelectFilter::make('author')
-                        ->relationship('author', 'name')
-                        ->searchable(),
-                ]);
-        }
-
-        public function render(): View
-        {
-            return view('livewire.table');
-        }
-    }
-
-    class TestTableWithPreloadedRelationshipFilter extends Component implements HasActions, HasSchemas, Tables\Contracts\HasTable
-    {
-        use InteractsWithActions;
-        use InteractsWithSchemas;
-        use Tables\Concerns\InteractsWithTable;
-
-        public function table(Table $table): Table
-        {
-            return $table
-                ->query(Post::query())
-                ->columns([
-                    Tables\Columns\TextColumn::make('title'),
-                    Tables\Columns\TextColumn::make('author.name'),
-                ])
-                ->filters([
-                    SelectFilter::make('author')
-                        ->relationship('author', 'name')
-                        ->preload(),
-                ]);
-        }
-
-        public function render(): View
-        {
-            return view('livewire.table');
-        }
-    }
-
-    class TestTableWithModifiedRelationshipFilter extends Component implements HasActions, HasSchemas, Tables\Contracts\HasTable
-    {
-        use InteractsWithActions;
-        use InteractsWithSchemas;
-        use Tables\Concerns\InteractsWithTable;
-
-        public function table(Table $table): Table
-        {
-            return $table
-                ->query(Post::query())
-                ->columns([
-                    Tables\Columns\TextColumn::make('title'),
-                    Tables\Columns\TextColumn::make('author.name'),
-                ])
-                ->filters([
-                    SelectFilter::make('author')
-                        ->relationship(
-                            'author',
-                            'name',
-                            modifyQueryUsing: fn ($query) => $query->orderBy('name'),
-                        )
-                        ->preload(),
-                ]);
-        }
-
-        public function render(): View
-        {
-            return view('livewire.table');
-        }
-    }
-
-    class TestTableWithScopeFilteredRelationshipFilter extends Component implements HasActions, HasSchemas, Tables\Contracts\HasTable
-    {
-        use InteractsWithActions;
-        use InteractsWithSchemas;
-        use Tables\Concerns\InteractsWithTable;
-
-        public function table(Table $table): Table
-        {
-            return $table
-                ->query(Post::query())
-                ->columns([
-                    Tables\Columns\TextColumn::make('title'),
-                    Tables\Columns\TextColumn::make('author.name'),
-                ])
-                ->filters([
-                    SelectFilter::make('author')
-                        ->relationship(
-                            'author',
-                            'name',
-                            modifyQueryUsing: fn ($query) => $query->where('name', 'like', 'Alpha%'),
-                        )
-                        ->preload(),
-                ]);
-        }
-
-        public function render(): View
-        {
-            return view('livewire.table');
-        }
-    }
-
-    class TestTableWithCustomRelationshipLabelFilter extends Component implements HasActions, HasSchemas, Tables\Contracts\HasTable
-    {
-        use InteractsWithActions;
-        use InteractsWithSchemas;
-        use Tables\Concerns\InteractsWithTable;
-
-        public function table(Table $table): Table
-        {
-            return $table
-                ->query(Post::query())
-                ->columns([
-                    Tables\Columns\TextColumn::make('title'),
-                    Tables\Columns\TextColumn::make('author.name'),
-                ])
-                ->filters([
-                    SelectFilter::make('author')
-                        ->relationship('author', 'name')
-                        ->getOptionLabelFromRecordUsing(fn (User $record): string => "{$record->name} ({$record->email})")
-                        ->preload(),
-                ]);
-        }
-
-        public function render(): View
-        {
-            return view('livewire.table');
-        }
-    }
 });
 
-it('can set `multiple()` with a `Closure`', function (): void {
-    $filter = SelectFilter::make('status')
-        ->multiple(static fn (): bool => true);
+class TestTableWithSearchableRelationshipFilter extends Component implements HasActions, HasSchemas, Tables\Contracts\HasTable
+{
+    use InteractsWithActions;
+    use InteractsWithSchemas;
+    use Tables\Concerns\InteractsWithTable;
 
-    expect($filter->isMultiple())->toBeTrue();
+    public function table(Table $table): Table
+    {
+        return $table
+            ->query(Post::query())
+            ->columns([
+                Tables\Columns\TextColumn::make('title'),
+                Tables\Columns\TextColumn::make('author.name'),
+            ])
+            ->filters([
+                SelectFilter::make('author')
+                    ->relationship('author', 'name')
+                    ->searchable(),
+            ]);
+    }
+
+    public function render(): View
+    {
+        return view('livewire.table');
+    }
+}
+
+class TestTableWithPreloadedRelationshipFilter extends Component implements HasActions, HasSchemas, Tables\Contracts\HasTable
+{
+    use InteractsWithActions;
+    use InteractsWithSchemas;
+    use Tables\Concerns\InteractsWithTable;
+
+    public function table(Table $table): Table
+    {
+        return $table
+            ->query(Post::query())
+            ->columns([
+                Tables\Columns\TextColumn::make('title'),
+                Tables\Columns\TextColumn::make('author.name'),
+            ])
+            ->filters([
+                SelectFilter::make('author')
+                    ->relationship('author', 'name')
+                    ->preload(),
+            ]);
+    }
+
+    public function render(): View
+    {
+        return view('livewire.table');
+    }
+}
+
+class TestTableWithModifiedRelationshipFilter extends Component implements HasActions, HasSchemas, Tables\Contracts\HasTable
+{
+    use InteractsWithActions;
+    use InteractsWithSchemas;
+    use Tables\Concerns\InteractsWithTable;
+
+    public function table(Table $table): Table
+    {
+        return $table
+            ->query(Post::query())
+            ->columns([
+                Tables\Columns\TextColumn::make('title'),
+                Tables\Columns\TextColumn::make('author.name'),
+            ])
+            ->filters([
+                SelectFilter::make('author')
+                    ->relationship(
+                        'author',
+                        'name',
+                        modifyQueryUsing: fn ($query) => $query->orderBy('name'),
+                    )
+                    ->preload(),
+            ]);
+    }
+
+    public function render(): View
+    {
+        return view('livewire.table');
+    }
+}
+
+class TestTableWithScopeFilteredRelationshipFilter extends Component implements HasActions, HasSchemas, Tables\Contracts\HasTable
+{
+    use InteractsWithActions;
+    use InteractsWithSchemas;
+    use Tables\Concerns\InteractsWithTable;
+
+    public function table(Table $table): Table
+    {
+        return $table
+            ->query(Post::query())
+            ->columns([
+                Tables\Columns\TextColumn::make('title'),
+                Tables\Columns\TextColumn::make('author.name'),
+            ])
+            ->filters([
+                SelectFilter::make('author')
+                    ->relationship(
+                        'author',
+                        'name',
+                        modifyQueryUsing: fn ($query) => $query->where('name', 'like', 'Alpha%'),
+                    )
+                    ->preload(),
+            ]);
+    }
+
+    public function render(): View
+    {
+        return view('livewire.table');
+    }
+}
+
+class TestTableWithCustomRelationshipLabelFilter extends Component implements HasActions, HasSchemas, Tables\Contracts\HasTable
+{
+    use InteractsWithActions;
+    use InteractsWithSchemas;
+    use Tables\Concerns\InteractsWithTable;
+
+    public function table(Table $table): Table
+    {
+        return $table
+            ->query(Post::query())
+            ->columns([
+                Tables\Columns\TextColumn::make('title'),
+                Tables\Columns\TextColumn::make('author.name'),
+            ])
+            ->filters([
+                SelectFilter::make('author')
+                    ->relationship('author', 'name')
+                    ->getOptionLabelFromRecordUsing(fn (User $record): string => "{$record->name} ({$record->email})")
+                    ->preload(),
+            ]);
+    }
+
+    public function render(): View
+    {
+        return view('livewire.table');
+    }
+}
+
+describe('selection configuration', function (): void {
+    it('can set `multiple()` with a `Closure`', function (): void {
+        $filter = SelectFilter::make('status')
+            ->multiple(static fn (): bool => true);
+
+        expect($filter->isMultiple())->toBeTrue();
+    });
+
+    it('can set `native()` with a `Closure`', function (): void {
+        $filter = SelectFilter::make('status')
+            ->native(static fn (): bool => false);
+
+        expect($filter->isNative())->toBeFalse();
+    });
+
+    it('can set `optionsLimit()` with a `Closure`', function (): void {
+        $filter = SelectFilter::make('status')
+            ->optionsLimit(static fn (): int => 200);
+
+        expect($filter->getOptionsLimit())->toBe(200);
+    });
 });
 
-it('can set `native()` with a `Closure`', function (): void {
-    $filter = SelectFilter::make('status')
-        ->native(static fn (): bool => false);
-
-    expect($filter->isNative())->toBeFalse();
-});
-
-it('can set `optionsLimit()` with a `Closure`', function (): void {
-    $filter = SelectFilter::make('status')
-        ->optionsLimit(static fn (): int => 200);
-
-    expect($filter->getOptionsLimit())->toBe(200);
-});
-
-it('can set `static()` to prevent query modification', function (): void {
+it('returns fluent `$this` from `static()`', function (): void {
     $filter = SelectFilter::make('status');
 
     $result = $filter->static();
@@ -828,12 +978,12 @@ describe('placeholder', function (): void {
     });
 });
 
-describe('relationship branch coverage', function (): void {
+describe('relationship options and labels', function (): void {
     /**
      * Wires the SelectFilter form field to a Schema with the table's model so that
      * relationship-based methods like `getOptions()` can resolve the model instance.
      */
-    $wireField = function (SelectFilter $filter, string $modelClass = Post::class): Select {
+    $wireField = static function (SelectFilter $filter, string $modelClass = Post::class): Select {
         return $filter->getFormField()->container(
             Schema::make(TestLivewireFixture::make())->model($modelClass),
         );
@@ -871,7 +1021,7 @@ describe('relationship branch coverage', function (): void {
             });
     });
 
-    it('includes the empty relationship option key in `getOptionsFromRelationship()` when `hasEmptyOption` is set', function () use ($wireField): void {
+    it('includes the empty relationship option key in `getOptionsFromRelationship()` when `$hasEmptyOption` is set', function () use ($wireField): void {
         $author = User::factory()->create(['name' => 'Alpha']);
 
         livewire(TestTableWithPreloadedEmptyRelationshipFilter::class)

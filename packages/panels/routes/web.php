@@ -41,7 +41,7 @@ Route::name('filament.')
 
                             if ($panel->hasPasswordReset()) {
                                 Route::name('password-reset.')
-                                    ->prefix($panel->getResetPasswordRoutePrefix())
+                                    ->prefix($panel->getPasswordResetRoutePrefix())
                                     ->group(function () use ($panel): void {
                                         Route::get($panel->getRequestPasswordResetRouteSlug(), $panel->getRequestPasswordResetRouteAction())
                                             ->name('request');
@@ -79,7 +79,7 @@ Route::name('filament.')
                                             Route::get($panel->getEmailVerificationPromptRouteSlug(), $panel->getEmailVerificationPromptRouteAction())
                                                 ->name('prompt');
                                             Route::get($panel->getEmailVerificationRouteSlug('/{id}/{hash}'), EmailVerificationController::class)
-                                                ->middleware(['signed', 'throttle:6,1'])
+                                                ->middleware(['signed', 'throttle:filament:auth'])
                                                 ->name('verify');
                                         });
                                 }
@@ -89,11 +89,11 @@ Route::name('filament.')
                                         ->prefix($panel->getEmailChangeVerificationRoutePrefix())
                                         ->group(function () use ($panel): void {
                                             Route::get($panel->getEmailChangeVerificationRouteSlug('/{id}/{email}'), EmailChangeVerificationController::class)
-                                                ->middleware(['signed', 'throttle:6,1'])
+                                                ->middleware(['signed', 'throttle:filament:auth'])
                                                 ->name('verify');
 
                                             Route::get($panel->getEmailChangeVerificationRouteSlug('/{id}/{email}/block'), BlockEmailChangeVerificationController::class)
-                                                ->middleware(['signed', 'throttle:6,1'])
+                                                ->middleware(['signed', 'throttle:filament:auth'])
                                                 ->name('block-verification');
                                         });
                                 }

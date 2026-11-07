@@ -5,7 +5,6 @@
     use Filament\Actions\BulkActionGroup;
     use Filament\Support\Enums\Alignment;
     use Filament\Support\Enums\IconSize;
-    use Filament\Support\Enums\VerticalAlignment;
     use Filament\Support\Enums\Width;
     use Filament\Support\Facades\FilamentView;
     use Filament\Support\Icons\Heroicon;
@@ -14,9 +13,7 @@
     use Filament\Tables\Columns\Column;
     use Filament\Tables\Columns\ColumnGroup;
     use Filament\Tables\Enums\ColumnManagerLayout;
-    use Filament\Tables\Enums\ColumnManagerResetActionPosition;
     use Filament\Tables\Enums\FiltersLayout;
-    use Filament\Tables\Enums\FiltersResetActionPosition;
     use Filament\Tables\Enums\RecordActionsPosition;
     use Filament\Tables\Enums\RecordCheckboxPosition;
     use Filament\Tables\Filters\Indicator;
@@ -27,7 +24,9 @@
     use Illuminate\Contracts\Pagination\LengthAwarePaginator;
     use Illuminate\Contracts\Pagination\Paginator;
     use Illuminate\Contracts\Support\Htmlable;
+    use Illuminate\Database\Eloquent\Model;
     use Illuminate\Database\Query\Builder;
+    use Illuminate\Support\Js;
     use Illuminate\Support\Number;
     use Illuminate\Support\Str;
     use Illuminate\View\ComponentAttributeBag;
@@ -53,6 +52,7 @@
     $contentFooter = $getContentFooter();
     $filterIndicators = $getFilterIndicators();
     $filtersApplyAction = $getFiltersApplyAction();
+    $filtersResetAction = $getFiltersResetAction();
     $filtersForm = $getFiltersForm();
     $filtersFormWidth = $getFiltersFormWidth();
     $filtersResetActionPosition = $getFiltersResetActionPosition();
@@ -116,6 +116,7 @@
     $selectsCurrentPageOnly = $selectsCurrentPageOnly();
     $selectsGroupsOnly = $selectsGroupsOnly();
     $recordCheckboxPosition = $getRecordCheckboxPosition();
+    $hasLoadingSkeleton = $hasLoadingSkeleton();
     $isStriped = $isStriped();
     $isStackedOnMobile = $isStackedOnMobile();
     $isLoaded = $isLoaded();
@@ -151,6 +152,11 @@
     $pluralModelLabel = $getPluralModelLabel();
     $records = $isLoaded ? $getRecords() : null;
     $hasPagination = (($records instanceof Paginator) || ($records instanceof CursorPaginator)) && (($records instanceof LengthAwarePaginator) ? $records->total() : $records->isNotEmpty());
+    $contentRenderHookData = [
+        'hasPagination' => $hasPagination,
+        'records' => $records,
+        'table' => $this->getTable(),
+    ];
     $hasEmptyState = ($records !== null) && ! count($records);
     $hasContentLayout = $content || $hasColumnsLayout;
     $searchDebounce = $getSearchDebounce();
@@ -229,8 +235,8 @@
                 canTrackDeselectedRecords: @js($canTrackDeselectedRecords()),
                 currentSelectionLivewireProperty: @js($getCurrentSelectionLivewireProperty()),
                 maxSelectableRecords: @js($maxSelectableRecords),
+                reorderMessage: @js(__('filament-tables::table.reordering.moved')),
                 selectsCurrentPageOnly: @js($selectsCurrentPageOnly),
-                $wire,
             })"
     {{
         $getExtraAttributeBag()->class([
@@ -244,6 +250,17 @@
         value="{{ $allSelectableRecordsCount }}"
         x-ref="allSelectableRecordsCount"
     />
+
+    @if ($isReorderable)
+        <span
+            wire:ignore
+            x-ref="tableReorderStatus"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            class="fi-sr-only"
+        ></span>
+    @endif
 
     <div
         @class([
@@ -271,6 +288,7 @@
                     :form="$filtersForm"
                     :heading-tag="$secondLevelHeadingTag"
                     class="fi-ta-filters-before-content"
+                    :reset-action="$filtersResetAction"
                     :reset-action-position="$filtersResetActionPosition"
                 />
             </div>
@@ -341,6 +359,7 @@
                             :heading-tag="$secondLevelHeadingTag"
                             x-cloak
                             :x-show="$hasCollapsibleFilters ? 'areFiltersOpen' : null"
+                            :reset-action="$filtersResetAction"
                             :reset-action-position="$filtersResetActionPosition"
                         />
 
@@ -432,6 +451,7 @@
                                 class="fi-ta-grouping-settings"
                             >
                                 <x-filament::dropdown
+                                    :menu="false"
                                     placement="bottom-start"
                                     shift
                                     width="xs"
@@ -568,10 +588,12 @@
                                         @php
                                             $filtersTriggerActionModalAlignment = $filtersTriggerAction->getModalAlignment();
                                             $filtersTriggerActionIsModalAutofocused = $filtersTriggerAction->isModalAutofocused();
+                                            $filtersTriggerActionIsModalClickThrough = $filtersTriggerAction->isModalClickThrough();
                                             $filtersTriggerActionHasModalCloseButton = $filtersTriggerAction->hasModalCloseButton();
                                             $filtersTriggerActionIsModalClosedByClickingAway = $filtersTriggerAction->isModalClosedByClickingAway();
                                             $filtersTriggerActionIsModalClosedByEscaping = $filtersTriggerAction->isModalClosedByEscaping();
                                             $filtersTriggerActionModalDescription = $filtersTriggerAction->getModalDescription();
+                                            $filtersTriggerActionModalEyebrow = $filtersTriggerAction->getModalEyebrow();
                                             $filtersTriggerActionExtraModalWindowAttributeBag = $filtersTriggerAction->getExtraModalWindowAttributeBag();
                                             $filtersTriggerActionExtraModalOverlayAttributeBag = $filtersTriggerAction->getExtraModalOverlayAttributeBag();
                                             $filtersTriggerActionVisibleModalFooterActions = $filtersTriggerAction->getVisibleModalFooterActions();
@@ -588,10 +610,12 @@
                                         <x-filament::modal
                                             :alignment="$filtersTriggerActionModalAlignment"
                                             :autofocus="$filtersTriggerActionIsModalAutofocused"
+                                            :click-through="$filtersTriggerActionIsModalClickThrough"
                                             :close-button="$filtersTriggerActionHasModalCloseButton"
                                             :close-by-clicking-away="$filtersTriggerActionIsModalClosedByClickingAway"
                                             :close-by-escaping="$filtersTriggerActionIsModalClosedByEscaping"
                                             :description="$filtersTriggerActionModalDescription"
+                                            :eyebrow="$filtersTriggerActionModalEyebrow"
                                             :extra-modal-window-attribute-bag="$filtersTriggerActionExtraModalWindowAttributeBag"
                                             :extra-modal-overlay-attribute-bag="$filtersTriggerActionExtraModalOverlayAttributeBag"
                                             :footer-actions="$filtersTriggerActionVisibleModalFooterActions"
@@ -619,6 +643,7 @@
                                         </x-filament::modal>
                                     @else
                                         <x-filament::dropdown
+                                            :menu="false"
                                             :max-height="$filtersFormMaxHeight"
                                             placement="bottom-end"
                                             shift
@@ -635,7 +660,11 @@
                                                 :apply-action="$filtersApplyAction"
                                                 :form="$filtersForm"
                                                 :heading-tag="$secondLevelHeadingTag"
+                                                :reset-action="$filtersResetAction"
                                                 :reset-action-position="$filtersResetActionPosition"
+                                                x-data="filamentTableFilters"
+                                                x-on:click="handleActionClick($event)"
+                                                tabindex="-1"
                                             />
                                         </x-filament::dropdown>
                                     @endif
@@ -665,10 +694,12 @@
                                         @php
                                             $columnManagerTriggerActionModalAlignment = $columnManagerTriggerAction->getModalAlignment();
                                             $columnManagerTriggerActionIsModalAutofocused = $columnManagerTriggerAction->isModalAutofocused();
+                                            $columnManagerTriggerActionIsModalClickThrough = $columnManagerTriggerAction->isModalClickThrough();
                                             $columnManagerTriggerActionHasModalCloseButton = $columnManagerTriggerAction->hasModalCloseButton();
                                             $columnManagerTriggerActionIsModalClosedByClickingAway = $columnManagerTriggerAction->isModalClosedByClickingAway();
                                             $columnManagerTriggerActionIsModalClosedByEscaping = $columnManagerTriggerAction->isModalClosedByEscaping();
                                             $columnManagerTriggerActionModalDescription = $columnManagerTriggerAction->getModalDescription();
+                                            $columnManagerTriggerActionModalEyebrow = $columnManagerTriggerAction->getModalEyebrow();
                                             $columnManagerTriggerActionExtraModalWindowAttributeBag = $columnManagerTriggerAction->getExtraModalWindowAttributeBag();
                                             $columnManagerTriggerActionExtraModalOverlayAttributeBag = $columnManagerTriggerAction->getExtraModalOverlayAttributeBag();
                                             $columnManagerTriggerActionVisibleModalFooterActions = $columnManagerTriggerAction->getVisibleModalFooterActions();
@@ -685,10 +716,12 @@
                                         <x-filament::modal
                                             :alignment="$columnManagerTriggerActionModalAlignment"
                                             :autofocus="$columnManagerTriggerActionIsModalAutofocused"
+                                            :click-through="$columnManagerTriggerActionIsModalClickThrough"
                                             :close-button="$columnManagerTriggerActionHasModalCloseButton"
                                             :close-by-clicking-away="$columnManagerTriggerActionIsModalClosedByClickingAway"
                                             :close-by-escaping="$columnManagerTriggerActionIsModalClosedByEscaping"
                                             :description="$columnManagerTriggerActionModalDescription"
+                                            :eyebrow="$columnManagerTriggerActionModalEyebrow"
                                             :extra-modal-window-attribute-bag="$columnManagerTriggerActionExtraModalWindowAttributeBag"
                                             :extra-modal-overlay-attribute-bag="$columnManagerTriggerActionExtraModalOverlayAttributeBag"
                                             :footer-actions="$columnManagerTriggerActionVisibleModalFooterActions"
@@ -731,6 +764,7 @@
                                         </x-filament::modal>
                                     @else
                                         <x-filament::dropdown
+                                            :menu="false"
                                             :max-height="$columnManagerMaxHeight"
                                             placement="bottom-end"
                                             shift
@@ -761,10 +795,10 @@
                         </div>
                     @endif
 
-                    {{ FilamentView::renderHook(TablesRenderHook::TOOLBAR_END) }}
+                    {{ FilamentView::renderHook(TablesRenderHook::TOOLBAR_END, scopes: static::class) }}
                 </div>
 
-                {{ FilamentView::renderHook(TablesRenderHook::TOOLBAR_AFTER) }}
+                {{ FilamentView::renderHook(TablesRenderHook::TOOLBAR_AFTER, scopes: static::class) }}
             </div>
 
             @if ($isReordering)
@@ -778,7 +812,7 @@
                     {{
                         \Filament\Support\generate_loading_indicator_html(new Filament\Support\View\ComponentAttributeBag([
                             'wire:loading.delay.' . config('filament.livewire_loading_delay', 'default') => '',
-                            'wire:target' => 'reorderTable',
+                            'wire:target' => 'reorderTable,moveTableRecord',
                         ]))
                     }}
 
@@ -878,7 +912,6 @@
                                                 name="deleteButton"
                                                 :label="__('filament-tables::table.filters.actions.remove.label')"
                                                 :wire:click="$indicatorRemoveLivewireClickHandler"
-                                                wire:loading.attr="disabled"
                                                 wire:target="removeTableFilter"
                                             ></x-slot>
                                         @endif
@@ -894,11 +927,18 @@
                 @endif
             @endif
 
+            {{ FilamentView::renderHook(TablesRenderHook::CONTENT_BEFORE, scopes: static::class, data: $contentRenderHookData) }}
+
             @if (((! $content) && (! $hasColumnsLayout)) || ($records === null) || count($records))
                 <div
                     @if ((! $isReordering) && ($pollingInterval = $getPollingInterval()))
                         wire:poll.{{ $pollingInterval }}
                     @endif
+                    wire:loading.attr="aria-busy"
+                    @if ($hasLoadingSkeleton)
+                        wire:loading.class.delay.{{ config('filament.livewire_loading_delay', 'default') }}="fi-ta-content-loading"
+                    @endif
+                    wire:target="{{ $loadingTargetsWireTarget }}"
                     class="fi-ta-content-ctn fi-fixed-positioning-context"
                 >
                     @if ($records !== null)
@@ -919,6 +959,17 @@
                             class="fi-sr-only"
                         >
                             {{ trans_choice('filament-tables::table.result_count', $resultCount, ['count' => $resultCount]) }}
+                        </div>
+
+                        <div
+                            wire:loading.delay.{{ config('filament.livewire_loading_delay', 'default') }}.block
+                            wire:target="{{ $loadingTargetsWireTarget }}"
+                            role="status"
+                            aria-live="polite"
+                            data-testid="table-loading-state"
+                            class="fi-sr-only"
+                        >
+                            {{ __('filament-tables::table.loading') }}
                         </div>
                     @endif
 
@@ -1069,17 +1120,18 @@
                         @else
                             <div
                                 @if ($isReorderable)
-                                    x-on:end.stop="
-                                        $wire.reorderTable(
-                                            $event.target.sortable.toArray(),
-                                            $event.item.getAttribute('x-sortable-item'),
-                                        )
-                                    "
+                                    x-ref="tableReorderRecords"
+                                    x-on:start.stop="startTableReorder($event)"
+                                    x-on:end.stop="reorderTableRecords($event)"
                                     x-sortable
                                     data-sortable-animation-duration="{{ $getReorderAnimationDuration() }}"
                                 @endif
                                 aria-label="{{ $pluralModelLabel }}"
                                 role="list"
+                                @if ($hasLoadingSkeleton)
+                                    wire:loading.attr.delay.{{ config('filament.livewire_loading_delay', 'default') }}="inert"
+                                    wire:target="{{ $loadingTargetsWireTarget }}"
+                                @endif
                                 {{
                                     (new FilamentComponentAttributeBag)
                                         ->when($contentGrid, fn (ComponentAttributeBag $attributes) => $attributes->grid($contentGrid))
@@ -1098,9 +1150,9 @@
 
                                 @foreach ($records as $record)
                                     @php
-                                        $recordAction = $getRecordAction($record);
                                         $recordKey = $getRecordKey($record);
                                         $recordUrl = $getRecordUrl($record);
+                                        $recordAction = $recordUrl ? null : $getRecordAction($record);
                                         $openRecordUrlInNewTab = $shouldOpenRecordUrlInNewTab($record);
                                         $recordGroupKey = $group?->getStringKey($record);
                                         $recordGroupTitle = $group?->getTitle($record, $recordGroupKey);
@@ -1116,37 +1168,58 @@
 
                                     @if ((string) $recordGroupTitle !== (string) $previousRecordGroupTitle)
                                         @if ($hasSummary && (! $isReordering) && filled($previousRecordGroupTitle))
-                                            <table
-                                                @class([
-                                                    'fi-ta-table',
-                                                    'fi-ta-table-reordering' => $isReordering,
-                                                ])
+                                            <div
+                                                role="listitem"
+                                                class="fi-ta-group-summary"
                                             >
-                                                <tbody>
-                                                    @php
-                                                        $groupScopedAllTableSummaryQuery = $group->scopeQuery($this->getAllTableSummaryQuery(), $previousRecord);
-                                                    @endphp
+                                                <table
+                                                    @class([
+                                                        'fi-ta-table',
+                                                        'fi-ta-table-stacked-on-mobile' => $isStackedOnMobile,
+                                                        'fi-ta-table-reordering' => $isReordering,
+                                                    ])
+                                                >
+                                                    <tbody>
+                                                        @php
+                                                            $groupScopedAllTableSummaryQuery = $group->scopeQuery($this->getAllTableSummaryQuery(), $previousRecord);
+                                                        @endphp
 
-                                                    <x-filament-tables::summary.row
-                                                        :columns="$columns"
-                                                        extra-heading-column
-                                                        :heading="
-                                                            __('filament-tables::table.summary.subheadings.group', [
-                                                                'group' => $previousRecordGroupTitle,
-                                                                'label' => $pluralModelLabel,
-                                                            ])
-                                                        "
-                                                        :placeholder-columns="false"
-                                                        :query="$groupScopedAllTableSummaryQuery"
-                                                        :selected-state="$groupedSummarySelectedState[$previousRecordGroupKey] ?? []"
-                                                    />
-                                                </tbody>
-                                            </table>
+                                                        <x-filament-tables::summary.row
+                                                            :columns="$columns"
+                                                            extra-heading-column
+                                                            :heading="
+                                                                __('filament-tables::table.summary.subheadings.group', [
+                                                                    'group' => $previousRecordGroupTitle,
+                                                                    'label' => $pluralModelLabel,
+                                                                ])
+                                                            "
+                                                            :placeholder-columns="false"
+                                                            :query="$groupScopedAllTableSummaryQuery"
+                                                            :selected-state="$groupedSummarySelectedState[$previousRecordGroupKey] ?? []"
+                                                        />
+                                                    </tbody>
+                                                </table>
+                                            </div>
                                         @endif
 
+                                        @php
+                                            $recordGroupLabel = $group->isTitlePrefixedWithLabel() ? $group->getLabel() : null;
+                                            $recordGroupDescription = $group->getDescription($record, $recordGroupTitle);
+                                            $hasRecordGroupCheckbox = $isSelectionEnabled && ($maxSelectableRecords !== 1);
+                                            $hasRecordGroupHeader = filled($recordGroupTitle)
+                                                || filled($recordGroupLabel)
+                                                || filled($recordGroupDescription)
+                                                || $isRecordGroupCollapsible
+                                                || $hasRecordGroupCheckbox;
+                                        @endphp
+
                                         <div
-                                            @if ($isRecordGroupCollapsible = $group->isCollapsible())
-                                                x-on:click="toggleCollapseGroup(@js($recordGroupTitle))"
+                                            role="listitem"
+                                            @if (! $hasRecordGroupHeader)
+                                                aria-hidden="true"
+                                            @endif
+                                            @if ($isRecordGroupCollapsible)
+                                                x-on:click="if (! $event.target.closest('.fi-ta-group-checkbox')) toggleCollapseGroup(@js($recordGroupTitle))"
                                                 @if (! $hasSummary)
                                                     x-bind:class="{ 'fi-collapsed': isGroupCollapsed(@js($recordGroupTitle)) }"
                                                 @endif
@@ -1156,7 +1229,7 @@
                                                 'fi-collapsible' => $isRecordGroupCollapsible,
                                             ])
                                         >
-                                            @if ($isSelectionEnabled && ($maxSelectableRecords !== 1))
+                                            @if ($hasRecordGroupCheckbox)
                                                 <input
                                                     aria-label="{{ __('filament-tables::table.fields.bulk_select_group.label', ['title' => $recordGroupTitle]) }}"
                                                     type="checkbox"
@@ -1200,14 +1273,14 @@
                                                 <{{ $secondLevelHeadingTag }}
                                                     class="fi-ta-group-heading"
                                                 >
-                                                    @if (filled($recordGroupLabel = ($group->isTitlePrefixedWithLabel() ? $group->getLabel() : null)))
+                                                    @if (filled($recordGroupLabel))
                                                             {{ $recordGroupLabel }}:
                                                     @endif
 
                                                     {{ $recordGroupTitle }}
                                                 </{{ $secondLevelHeadingTag }}>
 
-                                                @if (filled($recordGroupDescription = $group->getDescription($record, $recordGroupTitle)))
+                                                @if (filled($recordGroupDescription))
                                                     <p
                                                         class="fi-ta-group-description"
                                                     >
@@ -1235,7 +1308,6 @@
                                             x-init="$dispatch('collapsible-table-row-initialized')"
                                             x-on:collapse-all-table-rows.window="isCollapsed = true"
                                             x-on:expand-all-table-rows.window="isCollapsed = false"
-                                            x-bind:class="isCollapsed && 'fi-ta-record-collapsed'"
                                         @endif
                                         role="listitem"
                                         wire:key="{{ $this->getId() }}.table.records.{{ $recordKey }}"
@@ -1251,6 +1323,7 @@
                                             ...$getRecordClasses($record),
                                         ])
                                         x-bind:class="{
+                                            {{ $hasCollapsibleColumnsLayout ? '\'fi-ta-record-collapsed\': isCollapsed,' : '' }}
                                             {{ $group?->isCollapsible() ? '\'fi-collapsed\': isGroupCollapsed(' . \Illuminate\Support\Js::from($recordGroupTitle) . '),' : '' }}
                                             'fi-selected': @js($recordIsSelectable) && isRecordSelected(@js($recordKey)),
                                         }"
@@ -1261,13 +1334,45 @@
                                         @endphp
 
                                         @if ($isReordering)
+                                            @php
+                                                $reorderLabel = ($record instanceof Model && ($hasCustomRecordTitle() || filled($getRecordTitleAttribute()))) ? $getRecordTitle($record) : $recordKey;
+                                                $reorderPosition = $loop->iteration;
+                                                $reorderCount = $loop->count;
+                                                $reorderDescriptionId = $this->getId() . '-table-reorder-' . md5($recordKey);
+                                            @endphp
+
                                             <button
-                                                aria-label="{{ __('filament-tables::table.actions.reorder_record.label', ['key' => $recordKey]) }}"
+                                                aria-hidden="true"
+                                                tabindex="-1"
                                                 class="fi-ta-reorder-handle fi-icon-btn"
                                                 type="button"
                                             >
                                                 {{ \Filament\Support\generate_icon_html(Heroicon::Bars2, alias: TablesIconAlias::REORDER_HANDLE) }}
                                             </button>
+
+                                            <span
+                                                id="{{ $reorderDescriptionId }}"
+                                                class="fi-sr-only"
+                                                data-table-reorder-label="{{ $reorderLabel }}"
+                                            >
+                                                {{ __('filament-tables::table.reordering.position', ['label' => $reorderLabel, 'position' => $reorderPosition, 'count' => $reorderCount]) }}
+                                            </span>
+
+                                            <div class="fi-sr-only">
+                                                @foreach (['up', 'down'] as $direction)
+                                                    <button
+                                                        type="button"
+                                                        aria-describedby="{{ $reorderDescriptionId }}"
+                                                        @disabled(($direction === 'up') ? ($reorderPosition === 1) : ($reorderPosition === $reorderCount))
+                                                        tabindex="-1"
+                                                        data-table-reorder-direction="{{ $direction }}"
+                                                        x-bind:aria-disabled="tableReorderOperation !== null || $el.disabled"
+                                                        x-on:click.stop="moveTableRecord($event, @js($recordKey), @js($direction))"
+                                                    >
+                                                        {{ __('filament-tables::table.actions.move_record_' . $direction . '.label', ['label' => $reorderLabel]) }}
+                                                    </button>
+                                                @endforeach
+                                            </div>
                                         @elseif ($recordIsSelectable)
                                             <input
                                                 aria-label="{{ __('filament-tables::table.fields.bulk_select_record.label', ['key' => $recordKey]) }}"
@@ -1307,8 +1412,8 @@
                                                 @elseif ($recordAction)
                                                     @php
                                                         $recordWireClickAction = $getRecordAction($record)
-                                                            ? "mountTableAction('{$recordAction}', '{$recordKey}')"
-                                                            : $recordWireClickAction = "{$recordAction}('{$recordKey}')";
+                                                            ? "mountAction('{$recordAction}', {}, " . Js::from(['table' => true, 'recordKey' => $recordKey]) . ')'
+                                                            : $recordWireClickAction = "{$recordAction}(" . Js::from($recordKey) . ')';
                                                     @endphp
 
                                                     <button
@@ -1396,22 +1501,32 @@
                                 @endforeach
 
                                 @if ($hasSummary && (! $isReordering) && filled($previousRecordGroupTitle) && $this->shouldRenderTrailingGroupedTableSummary($previousRecord))
-                                    <table class="fi-ta-table">
-                                        <tbody>
-                                            @php
-                                                $groupScopedAllTableSummaryQuery = $group->scopeQuery($this->getAllTableSummaryQuery(), $previousRecord);
-                                            @endphp
+                                    <div
+                                        role="listitem"
+                                        class="fi-ta-group-summary"
+                                    >
+                                        <table
+                                            @class([
+                                                'fi-ta-table',
+                                                'fi-ta-table-stacked-on-mobile' => $isStackedOnMobile,
+                                            ])
+                                        >
+                                            <tbody>
+                                                @php
+                                                    $groupScopedAllTableSummaryQuery = $group->scopeQuery($this->getAllTableSummaryQuery(), $previousRecord);
+                                                @endphp
 
-                                            <x-filament-tables::summary.row
-                                                :columns="$columns"
-                                                extra-heading-column
-                                                :heading="__('filament-tables::table.summary.subheadings.group', ['group' => $previousRecordGroupTitle, 'label' => $pluralModelLabel])"
-                                                :placeholder-columns="false"
-                                                :query="$groupScopedAllTableSummaryQuery"
-                                                :selected-state="$groupedSummarySelectedState[$previousRecordGroupKey] ?? []"
-                                            />
-                                        </tbody>
-                                    </table>
+                                                <x-filament-tables::summary.row
+                                                    :columns="$columns"
+                                                    extra-heading-column
+                                                    :heading="__('filament-tables::table.summary.subheadings.group', ['group' => $previousRecordGroupTitle, 'label' => $pluralModelLabel])"
+                                                    :placeholder-columns="false"
+                                                    :query="$groupScopedAllTableSummaryQuery"
+                                                    :selected-state="$groupedSummarySelectedState[$previousRecordGroupKey] ?? []"
+                                                />
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 @endif
                             </div>
                         @endif
@@ -1426,7 +1541,12 @@
                         @endif
 
                         @if ($hasTopLevelSummary && (! $isReordering))
-                            <table class="fi-ta-table">
+                            <table
+                                @class([
+                                    'fi-ta-table',
+                                    'fi-ta-table-stacked-on-mobile' => $isStackedOnMobile,
+                                ])
+                            >
                                 <tbody>
                                     <x-filament-tables::summary
                                         :all-table-summary="$hasAllTableSummary"
@@ -1806,12 +1926,14 @@
                                                         @else
                                                             role="button"
                                                             tabindex="0"
-                                                            x-on:keydown.enter.prevent.stop="$wire.sortTable('{{ $columnName }}')"
-                                                            x-on:keydown.space.prevent.stop="$wire.sortTable('{{ $columnName }}')"
+                                                            x-on:keydown.enter.self.prevent.stop="$el.click()"
+                                                            x-on:keydown.space.self.prevent.stop="$el.click()"
                                                         @endif
+                                                        data-prevent-disabled-clicks
                                                         wire:click="sortTable('{{ $columnName }}')"
-                                                        wire:loading.attr="disabled"
-                                                        wire:target="sortTable('{{ $columnName }}')"
+                                                        wire:loading.attr="aria-disabled"
+                                                        wire:loading.class="fi-disabled"
+                                                        wire:target="{{ $loadingTargetsWireTarget }}"
                                                         class="fi-ta-header-cell-sort-btn"
                                                     >
                                                         @if (filled($columnHeaderTooltip))
@@ -1948,556 +2070,665 @@
                                 </tr>
                             </thead>
 
-                            @if ($isColumnSearchVisible || count($records))
+                            @if ($isColumnSearchVisible)
+                                <tbody>
+                                    @php
+                                        $breakpointOrder = [
+                                            'base' => 0,
+                                            'sm' => 1,
+                                            'md' => 2,
+                                            'lg' => 3,
+                                            'xl' => 4,
+                                            '2xl' => 5,
+                                        ];
+                                        $responsiveBreakpointOrder = array_diff_key($breakpointOrder, ['base' => true]);
+                                        $individualSearchHiddenAt = [];
+
+                                        $individualSearchColumnStates = [];
+
+                                        foreach ($columns as $columnKey => $column) {
+                                            $individualSearchColumnStates[$columnKey] = [
+                                                'hiddenFrom' => $column->getHiddenFrom(),
+                                                'isIndividuallySearchable' => $column->isIndividuallySearchable(),
+                                                'visibleFrom' => $column->getVisibleFrom(),
+                                            ];
+                                        }
+
+                                        foreach ($breakpointOrder as $breakpoint => $breakpointIndex) {
+                                            foreach ($individualSearchColumnStates as $columnState) {
+                                                if (! $columnState['isIndividuallySearchable']) {
+                                                    continue;
+                                                }
+
+                                                $visibleFromIndex = filled($columnState['visibleFrom']) ? ($responsiveBreakpointOrder[$columnState['visibleFrom']] ?? null) : null;
+
+                                                if ($visibleFromIndex !== null) {
+                                                    if ($breakpointIndex >= $visibleFromIndex) {
+                                                        continue 2;
+                                                    }
+
+                                                    continue;
+                                                }
+
+                                                $hiddenFromIndex = filled($columnState['hiddenFrom']) ? ($responsiveBreakpointOrder[$columnState['hiddenFrom']] ?? null) : null;
+
+                                                if (($hiddenFromIndex === null) || ($breakpointIndex < $hiddenFromIndex)) {
+                                                    continue 2;
+                                                }
+                                            }
+
+                                            $individualSearchHiddenAt[] = $breakpoint;
+                                        }
+                                    @endphp
+
+                                    <tr
+                                        @if (filled($individualSearchHiddenAt)) data-search-hidden-at="{{ implode(' ', $individualSearchHiddenAt) }}" @endif
+                                        class="fi-ta-row fi-ta-row-not-reorderable fi-ta-individual-search-row"
+                                    >
+                                        @if (count($records))
+                                            @if ($isReordering)
+                                                <td></td>
+                                            @else
+                                                @if ($hasRecordActionsForAnyRecord && in_array($recordActionsPosition, [RecordActionsPosition::BeforeCells, RecordActionsPosition::BeforeColumns]))
+                                                    <td></td>
+                                                @endif
+
+                                                @if ($isSelectionEnabled && $recordCheckboxPosition === RecordCheckboxPosition::BeforeCells)
+                                                    <td></td>
+                                                @endif
+                                            @endif
+                                        @endif
+
+                                        @foreach ($columns as $columnKey => $column)
+                                            @php
+                                                $columnName = $column->getName();
+                                                $columnState = $individualSearchColumnStates[$columnKey];
+                                                $isIndividuallySearchable = $columnState['isIndividuallySearchable'];
+                                                $columnHiddenFrom = $columnState['hiddenFrom'];
+                                                $columnVisibleFrom = $columnState['visibleFrom'];
+                                            @endphp
+
+                                            <td
+                                                @class([
+                                                    'fi-ta-cell',
+                                                    'fi-ta-individual-search-cell' => $isIndividuallySearchable,
+                                                    'fi-ta-individual-search-cell-' . str($columnName)->camel()->kebab() => $isIndividuallySearchable,
+                                                    filled($columnHiddenFrom) ? "{$columnHiddenFrom}:fi-hidden" : '',
+                                                    filled($columnVisibleFrom) ? "{$columnVisibleFrom}:fi-visible" : '',
+                                                ])
+                                            >
+                                                @if ($isIndividuallySearchable)
+                                                    <x-filament-tables::search-field
+                                                        :debounce="$searchDebounce"
+                                                        :label="$column->getLabel()"
+                                                        :label-hidden="! $isStackedOnMobile"
+                                                        :on-blur="$isSearchOnBlur"
+                                                        :wire-model="'tableColumnSearches.' . $columnName"
+                                                    />
+                                                @endif
+                                            </td>
+                                        @endforeach
+
+                                        @if ((! $isReordering) && count($records))
+                                            @if ($hasRecordActionsForAnyRecord && in_array($recordActionsPosition, [RecordActionsPosition::AfterColumns, RecordActionsPosition::AfterCells]))
+                                                <td></td>
+                                            @endif
+
+                                            @if ($isSelectionEnabled && $recordCheckboxPosition === RecordCheckboxPosition::AfterCells)
+                                                <td></td>
+                                            @endif
+                                        @endif
+                                    </tr>
+                                </tbody>
+                            @endif
+
+                            @if (count($records))
                                 <tbody
+                                    class="fi-ta-records"
                                     @if ($isReorderable)
-                                        x-on:end.stop="
-                                            $wire.reorderTable(
-                                                $event.target.sortable.toArray(),
-                                                $event.item.getAttribute('x-sortable-item'),
-                                            )
-                                        "
+                                        x-ref="tableReorderRecords"
+                                        x-on:start.stop="startTableReorder($event)"
+                                        x-on:end.stop="reorderTableRecords($event)"
                                         x-sortable
                                         data-sortable-animation-duration="{{ $getReorderAnimationDuration() }}"
                                     @endif
-                                >
-                                    @if ($isColumnSearchVisible)
-                                        <tr
-                                            class="fi-ta-row fi-ta-row-not-reorderable"
-                                        >
-                                            @if (count($records))
-                                                @if ($isReordering)
-                                                    <td></td>
-                                                @else
-                                                    @if ($hasRecordActionsForAnyRecord && in_array($recordActionsPosition, [RecordActionsPosition::BeforeCells, RecordActionsPosition::BeforeColumns]))
-                                                        <td></td>
-                                                    @endif
-
-                                                    @if ($isSelectionEnabled && $recordCheckboxPosition === RecordCheckboxPosition::BeforeCells)
-                                                        <td></td>
-                                                    @endif
-                                                @endif
-                                            @endif
-
-                                            @foreach ($columns as $column)
-                                                @php
-                                                    $columnName = $column->getName();
-                                                @endphp
-
-                                                <td
-                                                    @class([
-                                                        'fi-ta-cell',
-                                                        'fi-ta-individual-search-cell' => $isIndividuallySearchable = $column->isIndividuallySearchable(),
-                                                        'fi-ta-individual-search-cell-' . str($columnName)->camel()->kebab() => $isIndividuallySearchable,
-                                                    ])
-                                                >
-                                                    @if ($isIndividuallySearchable)
-                                                        <x-filament-tables::search-field
-                                                            :debounce="$searchDebounce"
-                                                            :on-blur="$isSearchOnBlur"
-                                                            :wire-model="'tableColumnSearches.' . $columnName"
-                                                        />
-                                                    @endif
-                                                </td>
-                                            @endforeach
-
-                                            @if ((! $isReordering) && count($records))
-                                                @if ($hasRecordActionsForAnyRecord && in_array($recordActionsPosition, [RecordActionsPosition::AfterColumns, RecordActionsPosition::AfterCells]))
-                                                    <td></td>
-                                                @endif
-
-                                                @if ($isSelectionEnabled && $recordCheckboxPosition === RecordCheckboxPosition::AfterCells)
-                                                    <td></td>
-                                                @endif
-                                            @endif
-                                        </tr>
+                                    @if ($hasLoadingSkeleton)
+                                        wire:loading.attr.delay.{{ config('filament.livewire_loading_delay', 'default') }}="inert"
+                                        wire:target="{{ $loadingTargetsWireTarget }}"
                                     @endif
+                                >
+                                    @php
+                                        $isRecordRowStriped = false;
+                                        $previousRecord = null;
+                                        $previousRecordGroupKey = null;
+                                        $previousRecordGroupTitle = null;
+                                    @endphp
 
-                                    @if (count($records))
+                                    @foreach ($records as $record)
                                         @php
-                                            $isRecordRowStriped = false;
-                                            $previousRecord = null;
-                                            $previousRecordGroupKey = null;
-                                            $previousRecordGroupTitle = null;
+                                            $recordKey = $getRecordKey($record);
+                                            $recordUrl = $getRecordUrl($record);
+                                            $recordAction = $recordUrl ? null : $getRecordAction($record);
+                                            $openRecordUrlInNewTab = $shouldOpenRecordUrlInNewTab($record);
+                                            $recordGroupKey = $group?->getStringKey($record);
+                                            $recordGroupTitle = $group?->getTitle($record, $recordGroupKey);
+                                            $recordIsSelectable = $isSelectionEnabled && $isRecordSelectable($record);
+
+                                            $recordActions = $recordActionsByRecordKey[$recordKey]
+                                                ?? ($hasRecordActionsForAnyRecord ? $reduceVisibleRecordActions($record) : []);
                                         @endphp
 
-                                        @foreach ($records as $record)
-                                            @php
-                                                $recordAction = $getRecordAction($record);
-                                                $recordKey = $getRecordKey($record);
-                                                $recordUrl = $getRecordUrl($record);
-                                                $openRecordUrlInNewTab = $shouldOpenRecordUrlInNewTab($record);
-                                                $recordGroupKey = $group?->getStringKey($record);
-                                                $recordGroupTitle = $group?->getTitle($record, $recordGroupKey);
-                                                $recordIsSelectable = $isSelectionEnabled && $isRecordSelectable($record);
-
-                                                $recordActions = $recordActionsByRecordKey[$recordKey]
-                                                    ?? ($hasRecordActionsForAnyRecord ? $reduceVisibleRecordActions($record) : []);
-                                            @endphp
-
-                                            @if ((string) $recordGroupTitle !== (string) $previousRecordGroupTitle)
-                                                @if ($hasSummary && (! $isReordering) && filled($previousRecordGroupTitle))
-                                                    @php
-                                                        $groupColumn = $group->getColumn();
-                                                        $groupScopedAllTableSummaryQuery = $group->scopeQuery($this->getAllTableSummaryQuery(), $previousRecord);
-                                                    @endphp
-
-                                                    <x-filament-tables::summary.row
-                                                        :actions="$hasRecordActionsForAnyRecord"
-                                                        :actions-position="$recordActionsPosition"
-                                                        :columns="$columns"
-                                                        :group-column="$groupColumn"
-                                                        :groups-only="$isGroupsOnly"
-                                                        :heading="$isGroupsOnly ? $previousRecordGroupTitle : __('filament-tables::table.summary.subheadings.group', ['group' => $previousRecordGroupTitle, 'label' => $pluralModelLabel])"
-                                                        :query="$groupScopedAllTableSummaryQuery"
-                                                        :record-checkbox-position="$recordCheckboxPosition"
-                                                        :selected-state="$groupedSummarySelectedState[$previousRecordGroupKey] ?? []"
-                                                        :selection-enabled="$isSelectionEnabled"
-                                                    />
-                                                @endif
-
-                                                @if (! $isGroupsOnly)
-                                                    <tr
-                                                        class="fi-ta-row fi-ta-group-header-row"
-                                                    >
-                                                        @php
-                                                            $isRecordGroupCollapsible = $group?->isCollapsible();
-                                                            $groupHeaderColspan = $columnsCount;
-
-                                                            if ($isSelectionEnabled) {
-                                                                $groupHeaderColspan--;
-
-                                                                if (
-                                                                    ($recordCheckboxPosition === RecordCheckboxPosition::BeforeCells) &&
-                                                                    $hasRecordActionsForAnyRecord &&
-                                                                    ($recordActionsPosition === RecordActionsPosition::BeforeCells)
-                                                                ) {
-                                                                    $groupHeaderColspan--;
-                                                                }
-                                                            }
-                                                        @endphp
-
-                                                        @if ($isSelectionEnabled && $recordCheckboxPosition === RecordCheckboxPosition::BeforeCells)
-                                                            @if ($hasRecordActionsForAnyRecord && $recordActionsPosition === RecordActionsPosition::BeforeCells)
-                                                                <td></td>
-                                                            @endif
-
-                                                            <td
-                                                                class="fi-ta-cell fi-ta-group-selection-cell"
-                                                            >
-                                                                @if ($maxSelectableRecords !== 1)
-                                                                    <input
-                                                                        aria-label="{{ __('filament-tables::table.fields.bulk_select_group.label', ['title' => $recordGroupTitle]) }}"
-                                                                        type="checkbox"
-                                                                        data-group-selectable-record-keys="{{ json_encode($this->getGroupedSelectableTableRecordKeys($recordGroupKey)) }}"
-                                                                        @if ($isSelectionDisabled)
-                                                                            disabled
-                                                                        @else
-                                                                            x-on:click="toggleSelectRecords(JSON.parse($el.dataset.groupSelectableRecordKeys))"
-                                                                            @if ($maxSelectableRecords)
-                                                                                x-bind:disabled="
-                                                                                    const recordsInGroup = JSON.parse($el.dataset.groupSelectableRecordKeys)
-
-                                                                                    return recordsInGroup.length && ! areRecordsToggleable(recordsInGroup)
-                                                                                "
-                                                                            @endif
-                                                                        @endif
-                                                                        x-bind:checked="
-                                                                            const recordsInGroup = JSON.parse($el.dataset.groupSelectableRecordKeys)
-
-                                                                            if (recordsInGroup.length && areRecordsSelected(recordsInGroup)) {
-                                                                                $el.checked = true
-                                                                                $el.indeterminate = false
-
-                                                                                return 'checked'
-                                                                            }
-
-                                                                            $el.checked = false
-                                                                            $el.indeterminate =
-                                                                                recordsInGroup.length && areRecordsPartiallySelected(recordsInGroup)
-
-                                                                            return null
-                                                                        "
-                                                                        wire:key="{{ $this->getId() }}.table.bulk_select_group.checkbox.{{ $page }}"
-                                                                        wire:loading.attr="disabled"
-                                                                        wire:target="{{ $loadingTargetsWireTarget }}"
-                                                                        class="fi-ta-group-checkbox fi-checkbox-input"
-                                                                    />
-                                                                @endif
-                                                            </td>
-                                                        @endif
-
-                                                        <td
-                                                            colspan="{{ $groupHeaderColspan }}"
-                                                            class="fi-ta-group-header-cell"
-                                                        >
-                                                            <div
-                                                                @if ($isRecordGroupCollapsible)
-                                                                    x-on:click="toggleCollapseGroup(@js($recordGroupTitle))"
-                                                                    x-bind:class="isGroupCollapsed(@js($recordGroupTitle)) ? 'fi-collapsed' : null"
-                                                                @endif
-                                                                @class([
-                                                                    'fi-ta-group-header',
-                                                                    'fi-collapsible' => $isRecordGroupCollapsible,
-                                                                ])
-                                                            >
-                                                                <div>
-                                                                    <{{ $secondLevelHeadingTag }}
-                                                                        class="fi-ta-group-heading"
-                                                                    >
-                                                                        @if (filled($recordGroupLabel = ($group->isTitlePrefixedWithLabel() ? $group->getLabel() : null)))
-                                                                                {{ $recordGroupLabel }}:
-                                                                        @endif
-
-                                                                        {{ $recordGroupTitle }}
-                                                                    </{{ $secondLevelHeadingTag }}>
-
-                                                                    @if (filled($recordGroupDescription = $group->getDescription($record, $recordGroupTitle)))
-                                                                        <p
-                                                                            class="fi-ta-group-description"
-                                                                        >
-                                                                            {{ $recordGroupDescription }}
-                                                                        </p>
-                                                                    @endif
-                                                                </div>
-
-                                                                @if ($isRecordGroupCollapsible)
-                                                                    <button
-                                                                        aria-label="{{ filled($recordGroupLabel) ? ($recordGroupLabel . ': ' . $recordGroupTitle) : $recordGroupTitle }}"
-                                                                        x-bind:aria-expanded="! isGroupCollapsed(@js($recordGroupTitle))"
-                                                                        type="button"
-                                                                        class="fi-icon-btn fi-size-sm"
-                                                                    >
-                                                                        {{ \Filament\Support\generate_icon_html(Heroicon::ChevronUp, alias: TablesIconAlias::GROUPING_COLLAPSE_BUTTON, size: IconSize::Small) }}
-                                                                    </button>
-                                                                @endif
-                                                            </div>
-                                                        </td>
-
-                                                        @if ($isSelectionEnabled && $recordCheckboxPosition === RecordCheckboxPosition::AfterCells)
-                                                            <td
-                                                                class="fi-ta-cell fi-ta-group-selection-cell"
-                                                            >
-                                                                @if ($maxSelectableRecords !== 1)
-                                                                    <input
-                                                                        aria-label="{{ __('filament-tables::table.fields.bulk_select_group.label', ['title' => $recordGroupTitle]) }}"
-                                                                        type="checkbox"
-                                                                        data-group-selectable-record-keys="{{ json_encode($this->getGroupedSelectableTableRecordKeys($recordGroupKey)) }}"
-                                                                        @if ($isSelectionDisabled)
-                                                                            disabled
-                                                                        @else
-                                                                            x-on:click="toggleSelectRecords(JSON.parse($el.dataset.groupSelectableRecordKeys))"
-                                                                            @if ($maxSelectableRecords)
-                                                                                x-bind:disabled="
-                                                                                    const recordsInGroup = JSON.parse($el.dataset.groupSelectableRecordKeys)
-
-                                                                                    return recordsInGroup.length && ! areRecordsToggleable(recordsInGroup)
-                                                                                "
-                                                                            @endif
-                                                                        @endif
-                                                                        x-bind:checked="
-                                                                            const recordsInGroup = JSON.parse($el.dataset.groupSelectableRecordKeys)
-
-                                                                            if (recordsInGroup.length && areRecordsSelected(recordsInGroup)) {
-                                                                                $el.checked = true
-                                                                                $el.indeterminate = false
-
-                                                                                return 'checked'
-                                                                            }
-
-                                                                            $el.checked = false
-                                                                            $el.indeterminate =
-                                                                                recordsInGroup.length && areRecordsPartiallySelected(recordsInGroup)
-
-                                                                            return null
-                                                                        "
-                                                                        wire:key="{{ $this->getId() }}.table.bulk_select_group.checkbox.{{ $page }}"
-                                                                        wire:loading.attr="disabled"
-                                                                        wire:target="{{ $loadingTargetsWireTarget }}"
-                                                                        class="fi-ta-group-checkbox fi-checkbox-input"
-                                                                    />
-                                                                @endif
-                                                            </td>
-                                                        @endif
-                                                    </tr>
-                                                @endif
-
+                                        @if ((string) $recordGroupTitle !== (string) $previousRecordGroupTitle)
+                                            @if ($hasSummary && (! $isReordering) && filled($previousRecordGroupTitle))
                                                 @php
-                                                    $isRecordRowStriped = false;
+                                                    $groupColumn = $group->getColumn();
+                                                    $groupScopedAllTableSummaryQuery = $group->scopeQuery($this->getAllTableSummaryQuery(), $previousRecord);
                                                 @endphp
+
+                                                <x-filament-tables::summary.row
+                                                    :actions="$hasRecordActionsForAnyRecord"
+                                                    :actions-position="$recordActionsPosition"
+                                                    :columns="$columns"
+                                                    :group-column="$groupColumn"
+                                                    :groups-only="$isGroupsOnly"
+                                                    :heading="$isGroupsOnly ? $previousRecordGroupTitle : __('filament-tables::table.summary.subheadings.group', ['group' => $previousRecordGroupTitle, 'label' => $pluralModelLabel])"
+                                                    :query="$groupScopedAllTableSummaryQuery"
+                                                    :record-checkbox-position="$recordCheckboxPosition"
+                                                    :selected-state="$groupedSummarySelectedState[$previousRecordGroupKey] ?? []"
+                                                    :selection-enabled="$isSelectionEnabled"
+                                                />
                                             @endif
 
                                             @if (! $isGroupsOnly)
+                                                @php
+                                                    $isRecordGroupCollapsible = $group?->isCollapsible();
+                                                    $recordGroupLabel = $group->isTitlePrefixedWithLabel() ? $group->getLabel() : null;
+                                                    $recordGroupDescription = $group->getDescription($record, $recordGroupTitle);
+                                                    $hasRecordGroupCheckbox = $isSelectionEnabled && ($maxSelectableRecords !== 1);
+                                                    $hasRecordGroupHeader = filled($recordGroupTitle)
+                                                        || filled($recordGroupLabel)
+                                                        || filled($recordGroupDescription)
+                                                        || $isRecordGroupCollapsible
+                                                        || $hasRecordGroupCheckbox;
+                                                @endphp
+
                                                 <tr
-                                                    wire:key="{{ $this->getId() }}.table.records.{{ $recordKey }}"
-                                                    {{ $isReordering ? 'x-sortable-handle' : null }}
-                                                    {!! $isReordering ? 'x-sortable-item="' . e($recordKey) . '"' : null !!}
-                                                    x-bind:class="{
-                                                        {{ $group?->isCollapsible() ? '\'fi-collapsed\': isGroupCollapsed(' . \Illuminate\Support\Js::from($recordGroupTitle) . '),' : '' }}
-                                                        'fi-selected': @js($recordIsSelectable) && isRecordSelected(@js($recordKey)),
-                                                    }"
+                                                    @if (! $hasRecordGroupHeader)
+                                                        aria-hidden="true"
+                                                    @endif
                                                     @class([
-                                                        'fi-ta-row',
-                                                        'fi-clickable' => $recordAction || $recordUrl,
-                                                        'fi-striped' => $isStriped && $isRecordRowStriped,
-                                                        ...$getRecordClasses($record),
+                                                        'fi-ta-row fi-ta-group-header-row',
+                                                        'fi-ta-group-header-row-with-selection' => $hasRecordGroupCheckbox,
                                                     ])
                                                 >
-                                                    @if ($isReordering)
-                                                        <td class="fi-ta-cell">
-                                                            <button
-                                                                aria-label="{{ __('filament-tables::table.actions.reorder_record.label', ['key' => $recordKey]) }}"
-                                                                class="fi-ta-reorder-handle fi-icon-btn"
-                                                                type="button"
-                                                            >
-                                                                {{ \Filament\Support\generate_icon_html(Heroicon::Bars2, alias: TablesIconAlias::REORDER_HANDLE) }}
-                                                            </button>
-                                                        </td>
-                                                    @endif
+                                                    @php
+                                                        $groupHeaderColspan = $columnsCount;
 
-                                                    @if ($hasRecordActionsForAnyRecord && $recordActionsPosition === RecordActionsPosition::BeforeCells && (! $isReordering))
-                                                        <td class="fi-ta-cell">
-                                                            <div
-                                                                @class([
-                                                                    'fi-ta-actions',
-                                                                    match ($recordActionsAlignment) {
-                                                                        Alignment::Center => 'fi-align-center',
-                                                                        Alignment::Start, Alignment::Left => 'fi-align-start',
-                                                                        Alignment::Between, Alignment::Justify => 'fi-align-between',
-                                                                        Alignment::End, Alignment::Right => '',
-                                                                        default => is_string($recordActionsAlignment) ? $recordActionsAlignment : '',
-                                                                    },
-                                                                ])
-                                                            >
-                                                                @foreach ($recordActions as $action)
-                                                                    {{ $action }}
-                                                                @endforeach
-                                                            </div>
-                                                        </td>
-                                                    @endif
+                                                        if ($isSelectionEnabled) {
+                                                            $groupHeaderColspan--;
 
-                                                    @if ($isSelectionEnabled && ($recordCheckboxPosition === RecordCheckboxPosition::BeforeCells) && (! $isReordering))
-                                                        <td
-                                                            class="fi-ta-cell fi-ta-selection-cell"
-                                                        >
-                                                            @if ($recordIsSelectable)
-                                                                <input
-                                                                    aria-label="{{ __('filament-tables::table.fields.bulk_select_record.label', ['key' => $recordKey]) }}"
-                                                                    type="checkbox"
-                                                                    @if ($isSelectionDisabled)
-                                                                        disabled
-                                                                    @elseif ($maxSelectableRecords && ($maxSelectableRecords !== 1))
-                                                                        x-bind:disabled="! areRecordsToggleable([@js($recordKey)])"
-                                                                    @endif
-                                                                    value="{{ $recordKey }}"
-                                                                    x-on:click="toggleSelectedRecord(@js($recordKey))"
-                                                                    x-bind:checked="isRecordSelected(@js($recordKey)) ? 'checked' : null"
-                                                                    data-group="{{ $recordGroupKey }}"
-                                                                    wire:loading.attr="disabled"
-                                                                    wire:target="{{ $loadingTargetsWireTarget }}"
-                                                                    class="fi-ta-record-checkbox fi-checkbox-input"
-                                                                />
-                                                            @endif
-                                                        </td>
-                                                    @endif
-
-                                                    @if ($hasRecordActionsForAnyRecord && $recordActionsPosition === RecordActionsPosition::BeforeColumns && (! $isReordering))
-                                                        <td class="fi-ta-cell">
-                                                            <div
-                                                                @class([
-                                                                    'fi-ta-actions',
-                                                                    match ($recordActionsAlignment) {
-                                                                        Alignment::Center => 'fi-align-center',
-                                                                        Alignment::Start, Alignment::Left => 'fi-align-start',
-                                                                        Alignment::Between, Alignment::Justify => 'fi-align-between',
-                                                                        Alignment::End, Alignment::Right => '',
-                                                                        default => is_string($recordActionsAlignment) ? $recordActionsAlignment : '',
-                                                                    },
-                                                                ])
-                                                            >
-                                                                @foreach ($recordActions as $action)
-                                                                    {{ $action }}
-                                                                @endforeach
-                                                            </div>
-                                                        </td>
-                                                    @endif
-
-                                                    @foreach ($columns as $column)
-                                                        @php
-                                                            $column->record($record);
-                                                            $column->rowLoop($loop->parent);
-                                                            $column->recordKey($recordKey);
-
-                                                            $columnAction = $column->getAction();
-                                                            $columnUrl = $column->getUrl();
-                                                            $columnHasStateBasedUrls = $column->hasStateBasedUrls();
-                                                            $isColumnClickDisabled = $column->isClickDisabled() || $isReordering;
-
-                                                            $columnWrapperTag = match (true) {
-                                                                ($columnUrl || ($recordUrl && $columnAction === null)) && (! $columnHasStateBasedUrls) && (! $isColumnClickDisabled) => 'a',
-                                                                ($columnAction || $recordAction) && (! $columnHasStateBasedUrls) && (! $isColumnClickDisabled) => 'button',
-                                                                default => 'div',
-                                                            };
-
-                                                            if ($columnWrapperTag === 'button') {
-                                                                if ($columnAction instanceof Action) {
-                                                                    $columnWireClickAction = "mountTableAction('{$columnAction->getName()}', '{$recordKey}')";
-                                                                } elseif ($columnAction) {
-                                                                    $columnWireClickAction = "callTableColumnAction('{$column->getName()}', '{$recordKey}')";
-                                                                } else {
-                                                                    if ($this->getTable()->getAction($recordAction)) {
-                                                                        $columnWireClickAction = "mountTableAction('{$recordAction}', '{$recordKey}')";
-                                                                    } else {
-                                                                        $columnWireClickAction = "{$recordAction}('{$recordKey}')";
-                                                                    }
-                                                                }
+                                                            if (
+                                                                ($recordCheckboxPosition === RecordCheckboxPosition::BeforeCells) &&
+                                                                $hasRecordActionsForAnyRecord &&
+                                                                ($recordActionsPosition === RecordActionsPosition::BeforeCells)
+                                                            ) {
+                                                                $groupHeaderColspan--;
                                                             }
-                                                        @endphp
+                                                        }
+                                                    @endphp
+
+                                                    @if ($isSelectionEnabled && $recordCheckboxPosition === RecordCheckboxPosition::BeforeCells)
+                                                        @if ($hasRecordActionsForAnyRecord && $recordActionsPosition === RecordActionsPosition::BeforeCells)
+                                                            <td></td>
+                                                        @endif
 
                                                         <td
-                                                            wire:key="{{ $this->getId() }}.table.record.{{ $recordKey }}.column.{{ $column->getName() }}"
-                                                            {!! $column->getCachedCellAttributeHtml() !!}
+                                                            class="fi-ta-cell fi-ta-group-selection-cell"
                                                         >
-                                                            {!! $isStackedOnMobile ? '<div class="fi-ta-cell-label">' . e($column->getLabel()) . '</div><div class="fi-ta-cell-content">' : '' !!}
-                                                            <{{ $columnWrapperTag }}
-                                                                @if ($columnWrapperTag === 'a')
-                                                                    {{ \Filament\Support\generate_href_html($columnUrl ?: $recordUrl, $columnUrl ? $column->shouldOpenUrlInNewTab() : $openRecordUrlInNewTab, hasNestedClickEventHandler: true) }}
-                                                                    @if (blank($columnUrl) && filled($recordUrl))
-                                                                        {{ $getExtraRecordLinkAttributeBag($record) }}
-                                                                    @endif
-                                                                @elseif ($columnWrapperTag === 'button')
-                                                                    type="button"
-                                                                    wire:click.prevent.stop="{{ $columnWireClickAction }}"
-                                                                    wire:loading.attr="disabled"
-                                                                    wire:target="{{ $columnWireClickAction }}"
-                                                                @endif
-                                                                @class([
-                                                                    'fi-ta-col',
-                                                                    'fi-ta-col-has-column-url' => ($columnWrapperTag === 'a') && filled($columnUrl),
-                                                                ])
-                                                            >
-                                                                {{ $column }}
-                                                            </{{ $columnWrapperTag }}>
-                                                            {!! $isStackedOnMobile ? '</div>' : '' !!}
-                                                        </td>
-                                                    @endforeach
-
-                                                    @if ($hasRecordActionsForAnyRecord && $recordActionsPosition === RecordActionsPosition::AfterColumns && (! $isReordering))
-                                                        <td class="fi-ta-cell">
-                                                            <div
-                                                                @class([
-                                                                    'fi-ta-actions',
-                                                                    match ($recordActionsAlignment) {
-                                                                        Alignment::Center => 'fi-align-center',
-                                                                        Alignment::Start, Alignment::Left => 'fi-align-start',
-                                                                        Alignment::Between, Alignment::Justify => 'fi-align-between',
-                                                                        Alignment::End, Alignment::Right => '',
-                                                                        default => is_string($recordActionsAlignment) ? $recordActionsAlignment : '',
-                                                                    },
-                                                                ])
-                                                            >
-                                                                @foreach ($recordActions as $action)
-                                                                    {{ $action }}
-                                                                @endforeach
-                                                            </div>
-                                                        </td>
-                                                    @endif
-
-                                                    @if ($isSelectionEnabled && $recordCheckboxPosition === RecordCheckboxPosition::AfterCells && (! $isReordering))
-                                                        <td
-                                                            class="fi-ta-cell fi-ta-selection-cell"
-                                                        >
-                                                            @if ($recordIsSelectable)
+                                                            @if ($maxSelectableRecords !== 1)
                                                                 <input
-                                                                    aria-label="{{ __('filament-tables::table.fields.bulk_select_record.label', ['key' => $recordKey]) }}"
+                                                                    aria-label="{{ __('filament-tables::table.fields.bulk_select_group.label', ['title' => $recordGroupTitle]) }}"
                                                                     type="checkbox"
+                                                                    data-group-selectable-record-keys="{{ json_encode($this->getGroupedSelectableTableRecordKeys($recordGroupKey)) }}"
                                                                     @if ($isSelectionDisabled)
                                                                         disabled
-                                                                    @elseif ($maxSelectableRecords && ($maxSelectableRecords !== 1))
-                                                                        x-bind:disabled="! areRecordsToggleable([@js($recordKey)])"
+                                                                    @else
+                                                                        x-on:click="toggleSelectRecords(JSON.parse($el.dataset.groupSelectableRecordKeys))"
+                                                                        @if ($maxSelectableRecords)
+                                                                            x-bind:disabled="
+                                                                                const recordsInGroup = JSON.parse($el.dataset.groupSelectableRecordKeys)
+
+                                                                                return recordsInGroup.length && ! areRecordsToggleable(recordsInGroup)
+                                                                            "
+                                                                        @endif
                                                                     @endif
-                                                                    value="{{ $recordKey }}"
-                                                                    x-on:click="toggleSelectedRecord(@js($recordKey))"
-                                                                    x-bind:checked="isRecordSelected(@js($recordKey)) ? 'checked' : null"
-                                                                    data-group="{{ $recordGroupKey }}"
+                                                                    x-bind:checked="
+                                                                        const recordsInGroup = JSON.parse($el.dataset.groupSelectableRecordKeys)
+
+                                                                        if (recordsInGroup.length && areRecordsSelected(recordsInGroup)) {
+                                                                            $el.checked = true
+                                                                            $el.indeterminate = false
+
+                                                                            return 'checked'
+                                                                        }
+
+                                                                        $el.checked = false
+                                                                        $el.indeterminate =
+                                                                            recordsInGroup.length && areRecordsPartiallySelected(recordsInGroup)
+
+                                                                        return null
+                                                                    "
+                                                                    wire:key="{{ $this->getId() }}.table.bulk_select_group.checkbox.{{ $page }}"
                                                                     wire:loading.attr="disabled"
                                                                     wire:target="{{ $loadingTargetsWireTarget }}"
-                                                                    class="fi-ta-record-checkbox fi-checkbox-input"
+                                                                    class="fi-ta-group-checkbox fi-checkbox-input"
                                                                 />
                                                             @endif
                                                         </td>
                                                     @endif
 
-                                                    @if ($hasRecordActionsForAnyRecord && $recordActionsPosition === RecordActionsPosition::AfterCells && (! $isReordering))
-                                                        <td class="fi-ta-cell">
-                                                            <div
-                                                                @class([
-                                                                    'fi-ta-actions',
-                                                                    match ($recordActionsAlignment) {
-                                                                        Alignment::Center => 'fi-align-center',
-                                                                        Alignment::Start, Alignment::Left => 'fi-align-start',
-                                                                        Alignment::Between, Alignment::Justify => 'fi-align-between',
-                                                                        Alignment::End, Alignment::Right => '',
-                                                                        default => is_string($recordActionsAlignment) ? $recordActionsAlignment : '',
-                                                                    },
-                                                                ])
-                                                            >
-                                                                @foreach ($recordActions as $action)
-                                                                    {{ $action }}
-                                                                @endforeach
+                                                    <td
+                                                        colspan="{{ $groupHeaderColspan }}"
+                                                        class="fi-ta-group-header-cell"
+                                                    >
+                                                        <div
+                                                            @if ($isRecordGroupCollapsible)
+                                                                x-on:click="toggleCollapseGroup(@js($recordGroupTitle))"
+                                                                x-bind:class="isGroupCollapsed(@js($recordGroupTitle)) ? 'fi-collapsed' : null"
+                                                            @endif
+                                                            @class([
+                                                                'fi-ta-group-header',
+                                                                'fi-collapsible' => $isRecordGroupCollapsible,
+                                                            ])
+                                                        >
+                                                            <div>
+                                                                <{{ $secondLevelHeadingTag }}
+                                                                    class="fi-ta-group-heading"
+                                                                >
+                                                                    @if (filled($recordGroupLabel))
+                                                                            {{ $recordGroupLabel }}:
+                                                                    @endif
+
+                                                                    {{ $recordGroupTitle }}
+                                                                </{{ $secondLevelHeadingTag }}>
+
+                                                                @if (filled($recordGroupDescription))
+                                                                    <p
+                                                                        class="fi-ta-group-description"
+                                                                    >
+                                                                        {{ $recordGroupDescription }}
+                                                                    </p>
+                                                                @endif
                                                             </div>
+
+                                                            @if ($isRecordGroupCollapsible)
+                                                                <button
+                                                                    aria-label="{{ filled($recordGroupLabel) ? ($recordGroupLabel . ': ' . $recordGroupTitle) : $recordGroupTitle }}"
+                                                                    x-bind:aria-expanded="! isGroupCollapsed(@js($recordGroupTitle))"
+                                                                    type="button"
+                                                                    class="fi-icon-btn fi-size-sm"
+                                                                >
+                                                                    {{ \Filament\Support\generate_icon_html(Heroicon::ChevronUp, alias: TablesIconAlias::GROUPING_COLLAPSE_BUTTON, size: IconSize::Small) }}
+                                                                </button>
+                                                            @endif
+                                                        </div>
+                                                    </td>
+
+                                                    @if ($isSelectionEnabled && $recordCheckboxPosition === RecordCheckboxPosition::AfterCells)
+                                                        <td
+                                                            class="fi-ta-cell fi-ta-group-selection-cell"
+                                                        >
+                                                            @if ($maxSelectableRecords !== 1)
+                                                                <input
+                                                                    aria-label="{{ __('filament-tables::table.fields.bulk_select_group.label', ['title' => $recordGroupTitle]) }}"
+                                                                    type="checkbox"
+                                                                    data-group-selectable-record-keys="{{ json_encode($this->getGroupedSelectableTableRecordKeys($recordGroupKey)) }}"
+                                                                    @if ($isSelectionDisabled)
+                                                                        disabled
+                                                                    @else
+                                                                        x-on:click="toggleSelectRecords(JSON.parse($el.dataset.groupSelectableRecordKeys))"
+                                                                        @if ($maxSelectableRecords)
+                                                                            x-bind:disabled="
+                                                                                const recordsInGroup = JSON.parse($el.dataset.groupSelectableRecordKeys)
+
+                                                                                return recordsInGroup.length && ! areRecordsToggleable(recordsInGroup)
+                                                                            "
+                                                                        @endif
+                                                                    @endif
+                                                                    x-bind:checked="
+                                                                        const recordsInGroup = JSON.parse($el.dataset.groupSelectableRecordKeys)
+
+                                                                        if (recordsInGroup.length && areRecordsSelected(recordsInGroup)) {
+                                                                            $el.checked = true
+                                                                            $el.indeterminate = false
+
+                                                                            return 'checked'
+                                                                        }
+
+                                                                        $el.checked = false
+                                                                        $el.indeterminate =
+                                                                            recordsInGroup.length && areRecordsPartiallySelected(recordsInGroup)
+
+                                                                        return null
+                                                                    "
+                                                                    wire:key="{{ $this->getId() }}.table.bulk_select_group.checkbox.{{ $page }}"
+                                                                    wire:loading.attr="disabled"
+                                                                    wire:target="{{ $loadingTargetsWireTarget }}"
+                                                                    class="fi-ta-group-checkbox fi-checkbox-input"
+                                                                />
+                                                            @endif
                                                         </td>
                                                     @endif
                                                 </tr>
                                             @endif
 
                                             @php
-                                                $isRecordRowStriped = ! $isRecordRowStriped;
-                                                $previousRecord = $record;
-                                                $previousRecordGroupKey = $recordGroupKey;
-                                                $previousRecordGroupTitle = $recordGroupTitle;
+                                                $isRecordRowStriped = false;
                                             @endphp
-                                        @endforeach
-
-                                        @if ($hasSummary && (! $isReordering) && filled($previousRecordGroupTitle) && $this->shouldRenderTrailingGroupedTableSummary($previousRecord))
-                                            @php
-                                                $groupColumn = $group->getColumn();
-                                                $groupScopedAllTableSummaryQuery = $group->scopeQuery($this->getAllTableSummaryQuery(), $previousRecord);
-                                            @endphp
-
-                                            <x-filament-tables::summary.row
-                                                :actions="$hasRecordActionsForAnyRecord"
-                                                :actions-position="$recordActionsPosition"
-                                                :columns="$columns"
-                                                :group-column="$groupColumn"
-                                                :groups-only="$isGroupsOnly"
-                                                :heading="$isGroupsOnly ? $previousRecordGroupTitle : __('filament-tables::table.summary.subheadings.group', ['group' => $previousRecordGroupTitle, 'label' => $pluralModelLabel])"
-                                                :query="$groupScopedAllTableSummaryQuery"
-                                                :record-checkbox-position="$recordCheckboxPosition"
-                                                :selected-state="$groupedSummarySelectedState[$previousRecordGroupKey] ?? []"
-                                                :selection-enabled="$isSelectionEnabled"
-                                            />
                                         @endif
 
-                                        @if ($hasSummary && (! $isReordering))
-                                            @php
-                                                $groupColumn = $group?->getColumn();
-                                            @endphp
+                                        @if (! $isGroupsOnly)
+                                            <tr
+                                                wire:key="{{ $this->getId() }}.table.records.{{ $recordKey }}"
+                                                {{ $isReordering ? 'x-sortable-handle' : null }}
+                                                {!! $isReordering ? 'x-sortable-item="' . e($recordKey) . '"' : null !!}
+                                                x-bind:class="{
+                                                        {{ $group?->isCollapsible() ? '\'fi-collapsed\': isGroupCollapsed(' . \Illuminate\Support\Js::from($recordGroupTitle) . '),' : '' }}
+                                                        'fi-selected': @js($recordIsSelectable) && isRecordSelected(@js($recordKey)),
+                                                    }"
+                                                @class([
+                                                    'fi-ta-row',
+                                                    'fi-clickable' => $recordAction || $recordUrl,
+                                                    'fi-striped' => $isStriped && $isRecordRowStriped,
+                                                    ...$getRecordClasses($record),
+                                                ])
+                                            >
+                                                @if ($isReordering)
+                                                    <td class="fi-ta-cell">
+                                                        @php
+                                                            $reorderLabel = ($record instanceof Model && ($hasCustomRecordTitle() || filled($getRecordTitleAttribute()))) ? $getRecordTitle($record) : $recordKey;
+                                                            $reorderPosition = $loop->iteration;
+                                                            $reorderCount = $loop->count;
+                                                            $reorderDescriptionId = $this->getId() . '-table-reorder-' . md5($recordKey);
+                                                        @endphp
 
-                                            <x-filament-tables::summary
-                                                :actions="$hasRecordActionsForAnyRecord"
-                                                :actions-position="$recordActionsPosition"
-                                                :all-table-summary="$hasAllTableSummary"
-                                                :columns="$columns"
-                                                :group-column="$groupColumn"
-                                                :groups-only="$isGroupsOnly"
-                                                :page-summary="$hasPageSummary"
-                                                :plural-model-label="$pluralModelLabel"
-                                                :record-checkbox-position="$recordCheckboxPosition"
-                                                :records="$records"
-                                                :selection-enabled="$isSelectionEnabled"
-                                            />
+                                                        <button
+                                                            aria-hidden="true"
+                                                            tabindex="-1"
+                                                            class="fi-ta-reorder-handle fi-icon-btn"
+                                                            type="button"
+                                                        >
+                                                            {{ \Filament\Support\generate_icon_html(Heroicon::Bars2, alias: TablesIconAlias::REORDER_HANDLE) }}
+                                                        </button>
+
+                                                        <span
+                                                            id="{{ $reorderDescriptionId }}"
+                                                            class="fi-sr-only"
+                                                            data-table-reorder-label="{{ $reorderLabel }}"
+                                                        >
+                                                            {{ __('filament-tables::table.reordering.position', ['label' => $reorderLabel, 'position' => $reorderPosition, 'count' => $reorderCount]) }}
+                                                        </span>
+
+                                                        <div class="fi-sr-only">
+                                                            @foreach (['up', 'down'] as $direction)
+                                                                <button
+                                                                    type="button"
+                                                                    aria-describedby="{{ $reorderDescriptionId }}"
+                                                                    @disabled(($direction === 'up') ? ($reorderPosition === 1) : ($reorderPosition === $reorderCount))
+                                                                    tabindex="-1"
+                                                                    data-table-reorder-direction="{{ $direction }}"
+                                                                    x-bind:aria-disabled="tableReorderOperation !== null || $el.disabled"
+                                                                    x-on:click.stop="moveTableRecord($event, @js($recordKey), @js($direction))"
+                                                                >
+                                                                    {{ __('filament-tables::table.actions.move_record_' . $direction . '.label', ['label' => $reorderLabel]) }}
+                                                                </button>
+                                                            @endforeach
+                                                        </div>
+                                                    </td>
+                                                @endif
+
+                                                @if ($hasRecordActionsForAnyRecord && $recordActionsPosition === RecordActionsPosition::BeforeCells && (! $isReordering))
+                                                    <td class="fi-ta-cell">
+                                                        <div
+                                                            @class([
+                                                                'fi-ta-actions',
+                                                                match ($recordActionsAlignment) {
+                                                                    Alignment::Center => 'fi-align-center',
+                                                                    Alignment::Start, Alignment::Left => 'fi-align-start',
+                                                                    Alignment::Between, Alignment::Justify => 'fi-align-between',
+                                                                    Alignment::End, Alignment::Right => '',
+                                                                    default => is_string($recordActionsAlignment) ? $recordActionsAlignment : '',
+                                                                },
+                                                            ])
+                                                        >
+                                                            @foreach ($recordActions as $action)
+                                                                {{ $action }}
+                                                            @endforeach
+                                                        </div>
+                                                    </td>
+                                                @endif
+
+                                                @if ($isSelectionEnabled && ($recordCheckboxPosition === RecordCheckboxPosition::BeforeCells) && (! $isReordering))
+                                                    <td
+                                                        class="fi-ta-cell fi-ta-selection-cell"
+                                                    >
+                                                        @if ($recordIsSelectable)
+                                                            <input
+                                                                aria-label="{{ __('filament-tables::table.fields.bulk_select_record.label', ['key' => $recordKey]) }}"
+                                                                type="checkbox"
+                                                                @if ($isSelectionDisabled)
+                                                                    disabled
+                                                                @elseif ($maxSelectableRecords && ($maxSelectableRecords !== 1))
+                                                                    x-bind:disabled="! areRecordsToggleable([@js($recordKey)])"
+                                                                @endif
+                                                                value="{{ $recordKey }}"
+                                                                x-on:click="toggleSelectedRecord(@js($recordKey))"
+                                                                x-bind:checked="isRecordSelected(@js($recordKey)) ? 'checked' : null"
+                                                                data-group="{{ $recordGroupKey }}"
+                                                                wire:loading.attr="disabled"
+                                                                wire:target="{{ $loadingTargetsWireTarget }}"
+                                                                class="fi-ta-record-checkbox fi-checkbox-input"
+                                                            />
+                                                        @endif
+                                                    </td>
+                                                @endif
+
+                                                @if ($hasRecordActionsForAnyRecord && $recordActionsPosition === RecordActionsPosition::BeforeColumns && (! $isReordering))
+                                                    <td class="fi-ta-cell">
+                                                        <div
+                                                            @class([
+                                                                'fi-ta-actions',
+                                                                match ($recordActionsAlignment) {
+                                                                    Alignment::Center => 'fi-align-center',
+                                                                    Alignment::Start, Alignment::Left => 'fi-align-start',
+                                                                    Alignment::Between, Alignment::Justify => 'fi-align-between',
+                                                                    Alignment::End, Alignment::Right => '',
+                                                                    default => is_string($recordActionsAlignment) ? $recordActionsAlignment : '',
+                                                                },
+                                                            ])
+                                                        >
+                                                            @foreach ($recordActions as $action)
+                                                                {{ $action }}
+                                                            @endforeach
+                                                        </div>
+                                                    </td>
+                                                @endif
+
+                                                @foreach ($columns as $column)
+                                                    @php
+                                                        $column->record($record);
+                                                        $column->rowLoop($loop->parent);
+                                                        $column->recordKey($recordKey);
+
+                                                        $columnAction = $column->getAction();
+                                                        $columnUrl = $column->getUrl();
+                                                        $columnHasStateBasedUrls = $column->hasStateBasedUrls();
+                                                        $isColumnClickDisabled = $column->isClickDisabled() || $isReordering;
+
+                                                        $columnWrapperTag = match (true) {
+                                                            ($columnUrl || ($recordUrl && $columnAction === null)) && (! $columnHasStateBasedUrls) && (! $isColumnClickDisabled) => 'a',
+                                                            ($columnAction || $recordAction) && (! $columnHasStateBasedUrls) && (! $isColumnClickDisabled) => 'button',
+                                                            default => 'div',
+                                                        };
+
+                                                        if ($columnWrapperTag === 'button') {
+                                                            if ($columnAction instanceof Action) {
+                                                                $columnWireClickAction = "mountAction('{$columnAction->getName()}', {}, " . Js::from(['table' => true, 'recordKey' => $recordKey]) . ')';
+                                                            } elseif ($columnAction) {
+                                                                $columnWireClickAction = "callTableColumnAction('{$column->getName()}', " . Js::from($recordKey) . ')';
+                                                            } else {
+                                                                if ($this->getTable()->getAction($recordAction)) {
+                                                                    $columnWireClickAction = "mountAction('{$recordAction}', {}, " . Js::from(['table' => true, 'recordKey' => $recordKey]) . ')';
+                                                                } else {
+                                                                    $columnWireClickAction = "{$recordAction}(" . Js::from($recordKey) . ')';
+                                                                }
+                                                            }
+                                                        }
+                                                    @endphp
+
+                                                    <td
+                                                        wire:key="{{ $this->getId() }}.table.record.{{ $recordKey }}.column.{{ $column->getName() }}"
+                                                        {!! $column->getCachedCellAttributeHtml() !!}
+                                                    >
+                                                        {!! $isStackedOnMobile ? '<div class="fi-ta-cell-label">' . e($column->getLabel()) . '</div><div class="fi-ta-cell-content">' : '' !!}
+                                                        <{{ $columnWrapperTag }}
+                                                            @if ($columnWrapperTag === 'a')
+                                                                {{ \Filament\Support\generate_href_html($columnUrl ?: $recordUrl, $columnUrl ? $column->shouldOpenUrlInNewTab() : $openRecordUrlInNewTab, hasNestedClickEventHandler: true) }}
+                                                                @if (blank($columnUrl) && filled($recordUrl))
+                                                                    {{ $getExtraRecordLinkAttributeBag($record) }}
+                                                                @endif
+                                                            @elseif ($columnWrapperTag === 'button')
+                                                                type="button"
+                                                                wire:click.prevent.stop="{{ $columnWireClickAction }}"
+                                                                wire:loading.attr="disabled"
+                                                                wire:target="{{ $columnWireClickAction }}"
+                                                            @endif
+                                                            @class([
+                                                                'fi-ta-col',
+                                                                'fi-ta-col-has-column-url' => ($columnWrapperTag === 'a') && filled($columnUrl),
+                                                            ])
+                                                        >
+                                                            {{ $column }}
+                                                        </{{ $columnWrapperTag }}>
+                                                        {!! $isStackedOnMobile ? '</div>' : '' !!}
+                                                    </td>
+                                                @endforeach
+
+                                                @if ($hasRecordActionsForAnyRecord && $recordActionsPosition === RecordActionsPosition::AfterColumns && (! $isReordering))
+                                                    <td class="fi-ta-cell">
+                                                        <div
+                                                            @class([
+                                                                'fi-ta-actions',
+                                                                match ($recordActionsAlignment) {
+                                                                    Alignment::Center => 'fi-align-center',
+                                                                    Alignment::Start, Alignment::Left => 'fi-align-start',
+                                                                    Alignment::Between, Alignment::Justify => 'fi-align-between',
+                                                                    Alignment::End, Alignment::Right => '',
+                                                                    default => is_string($recordActionsAlignment) ? $recordActionsAlignment : '',
+                                                                },
+                                                            ])
+                                                        >
+                                                            @foreach ($recordActions as $action)
+                                                                {{ $action }}
+                                                            @endforeach
+                                                        </div>
+                                                    </td>
+                                                @endif
+
+                                                @if ($isSelectionEnabled && $recordCheckboxPosition === RecordCheckboxPosition::AfterCells && (! $isReordering))
+                                                    <td
+                                                        class="fi-ta-cell fi-ta-selection-cell"
+                                                    >
+                                                        @if ($recordIsSelectable)
+                                                            <input
+                                                                aria-label="{{ __('filament-tables::table.fields.bulk_select_record.label', ['key' => $recordKey]) }}"
+                                                                type="checkbox"
+                                                                @if ($isSelectionDisabled)
+                                                                    disabled
+                                                                @elseif ($maxSelectableRecords && ($maxSelectableRecords !== 1))
+                                                                    x-bind:disabled="! areRecordsToggleable([@js($recordKey)])"
+                                                                @endif
+                                                                value="{{ $recordKey }}"
+                                                                x-on:click="toggleSelectedRecord(@js($recordKey))"
+                                                                x-bind:checked="isRecordSelected(@js($recordKey)) ? 'checked' : null"
+                                                                data-group="{{ $recordGroupKey }}"
+                                                                wire:loading.attr="disabled"
+                                                                wire:target="{{ $loadingTargetsWireTarget }}"
+                                                                class="fi-ta-record-checkbox fi-checkbox-input"
+                                                            />
+                                                        @endif
+                                                    </td>
+                                                @endif
+
+                                                @if ($hasRecordActionsForAnyRecord && $recordActionsPosition === RecordActionsPosition::AfterCells && (! $isReordering))
+                                                    <td class="fi-ta-cell">
+                                                        <div
+                                                            @class([
+                                                                'fi-ta-actions',
+                                                                match ($recordActionsAlignment) {
+                                                                    Alignment::Center => 'fi-align-center',
+                                                                    Alignment::Start, Alignment::Left => 'fi-align-start',
+                                                                    Alignment::Between, Alignment::Justify => 'fi-align-between',
+                                                                    Alignment::End, Alignment::Right => '',
+                                                                    default => is_string($recordActionsAlignment) ? $recordActionsAlignment : '',
+                                                                },
+                                                            ])
+                                                        >
+                                                            @foreach ($recordActions as $action)
+                                                                {{ $action }}
+                                                            @endforeach
+                                                        </div>
+                                                    </td>
+                                                @endif
+                                            </tr>
                                         @endif
+
+                                        @php
+                                            $isRecordRowStriped = ! $isRecordRowStriped;
+                                            $previousRecord = $record;
+                                            $previousRecordGroupKey = $recordGroupKey;
+                                            $previousRecordGroupTitle = $recordGroupTitle;
+                                        @endphp
+                                    @endforeach
+
+                                    @if ($hasSummary && (! $isReordering) && filled($previousRecordGroupTitle) && $this->shouldRenderTrailingGroupedTableSummary($previousRecord))
+                                        @php
+                                            $groupColumn = $group->getColumn();
+                                            $groupScopedAllTableSummaryQuery = $group->scopeQuery($this->getAllTableSummaryQuery(), $previousRecord);
+                                        @endphp
+
+                                        <x-filament-tables::summary.row
+                                            :actions="$hasRecordActionsForAnyRecord"
+                                            :actions-position="$recordActionsPosition"
+                                            :columns="$columns"
+                                            :group-column="$groupColumn"
+                                            :groups-only="$isGroupsOnly"
+                                            :heading="$isGroupsOnly ? $previousRecordGroupTitle : __('filament-tables::table.summary.subheadings.group', ['group' => $previousRecordGroupTitle, 'label' => $pluralModelLabel])"
+                                            :query="$groupScopedAllTableSummaryQuery"
+                                            :record-checkbox-position="$recordCheckboxPosition"
+                                            :selected-state="$groupedSummarySelectedState[$previousRecordGroupKey] ?? []"
+                                            :selection-enabled="$isSelectionEnabled"
+                                        />
+                                    @endif
+
+                                    @if ($hasSummary && (! $isReordering))
+                                        @php
+                                            $groupColumn = $group?->getColumn();
+                                        @endphp
+
+                                        <x-filament-tables::summary
+                                            :actions="$hasRecordActionsForAnyRecord"
+                                            :actions-position="$recordActionsPosition"
+                                            :all-table-summary="$hasAllTableSummary"
+                                            :columns="$columns"
+                                            :group-column="$groupColumn"
+                                            :groups-only="$isGroupsOnly"
+                                            :page-summary="$hasPageSummary"
+                                            :plural-model-label="$pluralModelLabel"
+                                            :record-checkbox-position="$recordCheckboxPosition"
+                                            :records="$records"
+                                            :selection-enabled="$isSelectionEnabled"
+                                        />
                                     @endif
                                 </tbody>
                             @endif
@@ -2539,7 +2770,19 @@
                     <div class="fi-ta-empty-state" role="status">
                         <div class="fi-ta-empty-state-content">
                             <div class="fi-ta-empty-state-icon-bg">
-                                {{ \Filament\Support\generate_icon_html($getEmptyStateIcon(), size: IconSize::Large) }}
+                                {{
+                                    \Filament\Support\generate_icon_html($getEmptyStateIcon(), attributes: (new FilamentComponentAttributeBag([
+                                        'wire:loading.remove.delay.' . config('filament.livewire_loading_delay', 'default') => '',
+                                        'wire:target' => $loadingTargetsWireTarget,
+                                    ])), size: IconSize::Large)
+                                }}
+
+                                {{
+                                    \Filament\Support\generate_loading_indicator_html((new FilamentComponentAttributeBag([
+                                        'wire:loading.delay.' . config('filament.livewire_loading_delay', 'default') => '',
+                                        'wire:target' => $loadingTargetsWireTarget,
+                                    ])), size: IconSize::Large)
+                                }}
                             </div>
 
                             <{{ $secondLevelHeadingTag }}
@@ -2571,6 +2814,8 @@
                 @endif
             @endif
 
+            {{ FilamentView::renderHook(TablesRenderHook::CONTENT_AFTER, scopes: static::class, data: $contentRenderHookData) }}
+
             @if ($hasPagination)
                 @php
                     $hasExtremePaginationLinks = $hasExtremePaginationLinks();
@@ -2579,6 +2824,7 @@
 
                 <x-filament::pagination
                     :extreme-links="$hasExtremePaginationLinks"
+                    :loading-targets="Table::LOADING_TARGETS"
                     :page-options="$paginationPageOptions"
                     :paginator="$records"
                 />
@@ -2590,6 +2836,7 @@
                     :form="$filtersForm"
                     :heading-tag="$secondLevelHeadingTag"
                     class="fi-ta-filters-below-content"
+                    :reset-action="$filtersResetAction"
                     :reset-action-position="$filtersResetActionPosition"
                 />
             @endif
@@ -2613,6 +2860,7 @@
                     :form="$filtersForm"
                     :heading-tag="$secondLevelHeadingTag"
                     class="fi-ta-filters-after-content"
+                    :reset-action="$filtersResetAction"
                     :reset-action-position="$filtersResetActionPosition"
                 />
             </div>

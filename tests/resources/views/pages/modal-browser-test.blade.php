@@ -3,6 +3,17 @@
 @endphp
 
 <x-filament-panels::page>
+    <x-filament::button
+        wire:click="activateLoadingButton"
+        data-testid="loading-button"
+        data-activations="{{ $loadingButtonActivations }}"
+        icon="heroicon-o-arrow-path"
+        tooltip="Simulate a pending request"
+        :key-bindings="['ctrl+shift+l']"
+    >
+        Simulate loading
+    </x-filament::button>
+
     <span data-testid="action-after-child-result">
         {{ $didRunActionAfterClosingChild ? 'ran' : 'not-ran' }}
     </span>
@@ -34,6 +45,7 @@
 
     <x-filament::modal
         id="standalone-browser-test-modal"
+        aria-label="Standalone modal"
         :extra-modal-window-attribute-bag="new ComponentAttributeBag(['data-testid' => 'standalone-modal'])"
     >
         <x-slot name="trigger">
@@ -68,6 +80,56 @@
     </x-filament::modal>
 
     <x-filament::modal
+        id="standalone-browser-test-long-sticky-modal"
+        :close-button="false"
+        :extra-modal-window-attribute-bag="new ComponentAttributeBag(['data-testid' => 'long-sticky-modal'])"
+        heading="Reviewing an annual service agreement"
+        sticky-header
+    >
+        <x-slot name="trigger">
+            <x-filament::button data-testid="long-sticky-trigger">
+                Open long sticky modal
+            </x-filament::button>
+        </x-slot>
+
+        @foreach (range(1, 18) as $section)
+            <section>
+                <h3>Agreement section {{ $section }}</h3>
+
+                <p>
+                    Review the service scope, response times, renewal terms, and
+                    account responsibilities before accepting this agreement.
+                </p>
+            </section>
+        @endforeach
+    </x-filament::modal>
+
+    <x-filament::modal
+        id="standalone-browser-test-long-slide-over-modal"
+        :close-button="false"
+        :extra-modal-window-attribute-bag="new ComponentAttributeBag(['data-testid' => 'long-slide-over-modal'])"
+        heading="Reviewing an annual service agreement"
+        slide-over
+    >
+        <x-slot name="trigger">
+            <x-filament::button data-testid="long-slide-over-trigger">
+                Open long slide-over
+            </x-filament::button>
+        </x-slot>
+
+        @foreach (range(1, 18) as $section)
+            <section>
+                <h3>Agreement section {{ $section }}</h3>
+
+                <p>
+                    Review the service scope, response times, renewal terms, and
+                    account responsibilities before accepting this agreement.
+                </p>
+            </section>
+        @endforeach
+    </x-filament::modal>
+
+    <x-filament::modal
         id="standalone-browser-test-no-focus-restore-modal"
         :restores-focus="false"
         :extra-modal-window-attribute-bag="new ComponentAttributeBag(['data-testid' => 'no-focus-restore-modal'])"
@@ -87,4 +149,19 @@
             Close
         </x-filament::button>
     </x-filament::modal>
+
+    @if ($hasScrollableContent)
+        <article>
+            @foreach (range(1, 24) as $section)
+                <section>
+                    <h3>Service agreement section {{ $section }}</h3>
+                    <p>
+                        Review the service scope, response times, renewal terms,
+                        and account responsibilities before accepting this
+                        agreement.
+                    </p>
+                </section>
+            @endforeach
+        </article>
+    @endif
 </x-filament-panels::page>

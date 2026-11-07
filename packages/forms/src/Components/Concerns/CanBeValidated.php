@@ -180,6 +180,8 @@ trait CanBeValidated
                         ]) ?? $query;
                     }
 
+                    $query->useWritePdo();
+
                     if (! $query->exists()) {
                         $fail(__($component->getValidationMessages()['exists'] ?? 'validation.exists', ['attribute' => $component->getValidationAttribute()]));
                     }
@@ -217,11 +219,13 @@ trait CanBeValidated
                     ]) ?? $query;
                 }
 
+                $query->useWritePdo();
+
                 if (! $query->exists()) {
                     $fail(__($component->getValidationMessages()['exists'] ?? 'validation.exists', ['attribute' => $component->getValidationAttribute()]));
                 }
             };
-        }, static fn (Field $component, ?string $model): bool => (bool) ($component->evaluate($model) ?? $model));
+        }, static fn (Field $component): bool => (bool) ($component->evaluate($model) ?? $component->getModel()));
 
         return $this;
     }
@@ -248,7 +252,7 @@ trait CanBeValidated
         if (! $condition) {
             $values = null;
         } elseif ($condition instanceof Closure) {
-            $values = fn (Component $component): array | Arrayable | string | Closure | null => $component->evaluate($condition) ? $values : null;
+            $values = fn (Component $component): array | Arrayable | string | null => $component->evaluate($condition) ? $component->evaluate($values) : null;
         }
 
         $this->inValidationRuleValues = $values;
@@ -617,11 +621,13 @@ trait CanBeValidated
                     ]) ?? $query;
                 }
 
+                $query->useWritePdo();
+
                 if ($query->exists()) {
                     $fail(__($component->getValidationMessages()['unique'] ?? 'validation.unique', ['attribute' => $component->getValidationAttribute()]));
                 }
             };
-        }, fn (Field $component, ?string $model): bool => (bool) ($component->evaluate($model) ?? $model));
+        }, fn (Field $component): bool => (bool) ($component->evaluate($model) ?? $component->getModel()));
 
         return $this;
     }
@@ -693,8 +699,15 @@ trait CanBeValidated
                 }
 
                 if (is_array($rawState)) {
+                    $normalizeEnumValue = static fn (mixed $value): mixed => ($value instanceof BackedEnum) ? $value->value : $value;
+
+                    $rawState = array_map($normalizeEnumValue, $rawState);
+
                     $hasSiblingStateIntersections = collect($repeaterSiblingState)
-                        ->filter(fn (array $item): bool => filled(array_intersect(data_get($item, $componentItemStatePath, []), $rawState)))
+                        ->filter(fn (array $item): bool => filled(array_intersect(
+                            array_map($normalizeEnumValue, data_get($item, $componentItemStatePath, [])),
+                            $rawState,
+                        )))
                         ->isNotEmpty();
 
                     if (! $hasSiblingStateIntersections) {
@@ -887,7 +900,7 @@ trait CanBeValidated
     }
 
     /**
-     * @param  array<string, array<string, string>>  $messages
+     * @param  array<string, string>  $messages
      */
     public function dehydrateValidationMessages(array &$messages): void
     {

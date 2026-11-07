@@ -6,10 +6,30 @@ return [
 
         'heading' => 'Kolumny',
 
+        'position' => 'Pozycja :position z :count.',
+
+        'position_in_group' => 'Pozycja :position z :count w :group.',
+
+        'reordered' => ':column przeniesiono na pozycję :position z :count.',
+
+        'reordered_deferred' => ':column przeniesiono na pozycję :position z :count. Zastosuj kolumny, aby zapisać zmiany.',
+
+        'reordered_in_group' => ':column przeniesiono na pozycję :position z :count w :group.',
+
+        'reordered_in_group_deferred' => ':column przeniesiono na pozycję :position z :count w :group. Zastosuj kolumny, aby zapisać zmiany.',
+
         'actions' => [
 
             'apply' => [
                 'label' => 'Zastosuj kolumny',
+            ],
+
+            'move_up' => [
+                'label' => 'Przenieś :column w górę',
+            ],
+
+            'move_down' => [
+                'label' => 'Przenieś :column w dół',
             ],
 
             'reorder' => [
@@ -27,7 +47,14 @@ return [
     'columns' => [
 
         'actions' => [
-            'label' => 'Akcja|Akcje',
+            'label' => 'Akcja|Akcje|Akcje',
+        ],
+
+        'editable' => [
+            'saving' => 'Zapisywanie zmiany...',
+            'saved' => 'Zmiana zapisana.',
+            'failure' => 'Nie udało się potwierdzić zapisu. Odśwież stronę i spróbuj ponownie.',
+            'unavailable' => 'Nie można już edytować tego elementu.',
         ],
 
         'icon' => [
@@ -130,6 +157,14 @@ return [
 
         'reorder_record' => [
             'label' => 'Zmień kolejność pozycji :key',
+        ],
+
+        'move_record_up' => [
+            'label' => 'Przenieś :label w górę',
+        ],
+
+        'move_record_down' => [
+            'label' => 'Przenieś :label w dół',
         ],
 
         'filter' => [
@@ -244,7 +279,12 @@ return [
 
     'reorder_indicator' => 'Zmień kolejność przeciągając.',
 
-    'result_count' => '{0} Brak wyników|{1} :count wynik|[2,*] :count wyników',
+    'reordering' => [
+        'position' => ':label, pozycja :position z :count.',
+        'moved' => ':label przeniesiono na pozycję :position z :count.',
+    ],
+
+    'result_count' => ':count wynik|:count wyniki|:count wyników|{0} Brak wyników',
 
     'selection_indicator' => [
 

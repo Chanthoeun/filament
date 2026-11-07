@@ -13,7 +13,7 @@ use Filament\Tables\Columns\Concerns\BelongsToLayout;
 use Filament\Tables\Columns\Concerns\BelongsToTable;
 use Filament\Tables\Columns\Concerns\CanBeHidden;
 use Filament\Tables\Columns\Concerns\HasRecord;
-use Filament\Tables\Columns\Concerns\HasRowLoopObject;
+use Filament\Tables\Columns\Concerns\HasRowLoop;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\HtmlString;
@@ -28,7 +28,7 @@ class Component extends ViewComponent
     use CanSpanColumns;
     use HasExtraAttributes;
     use HasRecord;
-    use HasRowLoopObject;
+    use HasRowLoop;
 
     protected string $evaluationIdentifier = 'layout';
 
@@ -119,6 +119,11 @@ class Component extends ViewComponent
     public function getTable(): Table
     {
         return $this->table ?? $this->getLayout()?->getTable() ?? throw new LogicException('The column layout component is not mounted to a table.');
+    }
+
+    public function hasTable(): bool
+    {
+        return isset($this->table) || ($this->getLayout()?->hasTable() ?? false);
     }
 
     public function isCollapsible(): bool

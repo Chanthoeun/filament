@@ -70,9 +70,8 @@
     $hasPrefix = count($prefixActions) || ($prefixIconHtml !== null) || filled($prefix);
     $hasSuffix = count($suffixActions) || ($suffixIconHtml !== null) || filled($suffix);
 
-    $hasFocusInputListener = $attributes->has('x-on:focus-input.stop');
-    $canClickPrefixAffix = $hasFocusInputListener && (($prefixIconHtml !== null) || filled($prefix));
-    $canClickSuffixAffix = $hasFocusInputListener && (($suffixIconHtml !== null) || filled($suffix));
+    $canClickPrefixAffix = ($prefixIconHtml !== null) || filled($prefix);
+    $canClickSuffixAffix = ($suffixIconHtml !== null) || filled($suffix);
 @endphp
 
 <div
@@ -87,8 +86,8 @@
             ->except(['wire:target', 'tabindex'])
             ->class([
                 'fi-input-wrp',
-                'fi-disabled' => (! $hasAlpineClasses) && $disabled,
-                'fi-invalid' => (! $hasAlpineClasses) && (! $valid),
+                'fi-disabled' => (! $hasAlpineDisabledClasses) && $disabled,
+                'fi-invalid' => (! $hasAlpineValidClasses) && (! $valid),
             ])
     }}
 >
@@ -100,7 +99,7 @@
                 wire:key="{{ Str::random() }}" {{-- Makes sure the loading indicator gets hidden again. --}}
             @endif
             @if ($canClickPrefixAffix)
-                x-on:click="$dispatch('focus-input')"
+                x-on:click="if (! $event.target.closest('.fi-input-wrp-actions')) $dispatch('focus-input')"
             @endif
             @class([
                 'fi-input-wrp-prefix',
@@ -110,10 +109,7 @@
             ])
         >
             @if (count($prefixActions))
-                <div
-                    @class(['fi-input-wrp-actions'])
-                    @if ($canClickPrefixAffix) x-on:click.stop @endif
-                >
+                <div @class(['fi-input-wrp-actions'])>
                     @foreach ($prefixActions as $prefixAction)
                         {{ $prefixAction }}
                     @endforeach
@@ -142,7 +138,7 @@
     <div
         @if ($hasLoadingIndicator && (! $hasPrefix))
             @if ($inlinePrefix)
-                wire:loading.delay.{{ $loadingDelay }}.class.remove="ps-3"
+                wire:loading.delay.{{ $loadingDelay }}.class.remove="fi-input-wrp-content-ctn-ps"
             @endif
 
             wire:target="{{ $loadingIndicatorTarget }}"
@@ -158,7 +154,7 @@
     @if ($hasSuffix)
         <div
             @if ($canClickSuffixAffix)
-                x-on:click="$dispatch('focus-input')"
+                x-on:click="if (! $event.target.closest('.fi-input-wrp-actions')) $dispatch('focus-input')"
             @endif
             @class([
                 'fi-input-wrp-suffix',
@@ -175,10 +171,7 @@
             {{ $suffixIconHtml }}
 
             @if (count($suffixActions))
-                <div
-                    @class(['fi-input-wrp-actions'])
-                    @if ($canClickSuffixAffix) x-on:click.stop @endif
-                >
+                <div @class(['fi-input-wrp-actions'])>
                     @foreach ($suffixActions as $suffixAction)
                         {{ $suffixAction }}
                     @endforeach

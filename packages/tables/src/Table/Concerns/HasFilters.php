@@ -4,6 +4,8 @@ namespace Filament\Tables\Table\Concerns;
 
 use Closure;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
+use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Group;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\Size;
@@ -14,6 +16,7 @@ use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Enums\FiltersResetActionPosition;
 use Filament\Tables\Filters\BaseFilter;
 use Filament\Tables\View\TablesIconAlias;
+use Illuminate\Contracts\Support\Htmlable;
 
 trait HasFilters
 {
@@ -25,7 +28,7 @@ trait HasFilters
     protected ?Closure $filtersFormSchema = null;
 
     /**
-     * @var int | array<string, int | null> | Closure
+     * @var int | array<string, int | null> | Closure | null
      */
     protected int | array | Closure | null $filtersFormColumns = null;
 
@@ -44,6 +47,8 @@ trait HasFilters
     protected bool | Closure $hasDeferredFilters = true;
 
     protected ?Closure $modifyFiltersApplyActionUsing = null;
+
+    protected ?Closure $modifyFiltersResetActionUsing = null;
 
     protected ?Closure $modifyFiltersRemoveAllActionUsing = null;
 
@@ -64,6 +69,13 @@ trait HasFilters
     public function filtersApplyAction(?Closure $callback): static
     {
         $this->modifyFiltersApplyActionUsing = $callback;
+
+        return $this;
+    }
+
+    public function filtersResetAction(?Closure $callback): static
+    {
+        $this->modifyFiltersResetActionUsing = $callback;
 
         return $this;
     }
@@ -91,7 +103,7 @@ trait HasFilters
         $this->pushFilters($filters);
 
         if ($layout) {
-            $this->filtersLayout($layout);
+            $this->filtersLayout(is_string($layout) ? (FiltersLayout::tryFrom($layout) ?? $layout) : $layout);
         }
 
         return $this;
@@ -112,7 +124,7 @@ trait HasFilters
     }
 
     /**
-     * @param  int | array<string, int | null> | Closure  $columns
+     * @param  int | array<string, int | null> | Closure | null  $columns
      */
     public function filtersFormColumns(int | array | Closure | null $columns): static
     {
@@ -193,6 +205,37 @@ trait HasFilters
         return $this->getLivewire()->getTableFiltersForm();
     }
 
+    /**
+     * @template TReturn
+     *
+     * @param  Closure(): TReturn  $callback
+     * @return TReturn
+     *
+     * @internal
+     */
+    public function withAppliedFiltersFormState(Closure $callback): mixed
+    {
+        if (! $this->hasDeferredFilters()) {
+            return $callback();
+        }
+
+        $this->setFiltersFormStatePath('tableFilters');
+
+        try {
+            return $callback();
+        } finally {
+            $this->setFiltersFormStatePath('tableDeferredFilters');
+        }
+    }
+
+    protected function setFiltersFormStatePath(string $statePath): void
+    {
+        $filtersForm = $this->getFiltersForm()->statePath($statePath);
+
+        $filtersForm->flushCachedAbsoluteStatePaths();
+        $filtersForm->clearCachedChildSchemas();
+    }
+
     public function filtersFormSchema(?Closure $schema): static
     {
         $this->filtersFormSchema = $schema;
@@ -201,7 +244,7 @@ trait HasFilters
     }
 
     /**
-     * @return array<string, Group>
+     * @return array<Component | Action | ActionGroup | string | Htmlable>
      */
     public function getFiltersFormSchema(): array
     {
@@ -209,7 +252,7 @@ trait HasFilters
 
         foreach ($this->getFilters() as $filterName => $filter) {
             $filters[$filterName] = Group::make()
-                ->schema($filter->getSchemaComponents())
+                ->schema($filter->getFormSchema())
                 ->statePath($filterName)
                 ->key($filterName)
                 ->columnSpan($filter->getColumnSpan())
@@ -232,11 +275,7 @@ trait HasFilters
             ->extraModalFooterActions([
                 $this->getFiltersApplyAction()
                     ->close(),
-                Action::make('resetFilters')
-                    ->label(__('filament-tables::table.filters.actions.reset.label'))
-                    ->color('danger')
-                    ->action('resetTableFiltersForm')
-                    ->button(),
+                $this->getFiltersResetAction(),
             ])
             ->modalCancelActionLabel(__('filament::components/modal.actions.close.label'))
             ->table($this)
@@ -268,6 +307,28 @@ trait HasFilters
                 'action' => $action,
             ]) ?? $action;
         }
+
+        $action->extraAttributes(['data-table-filter-action' => 'apply'], merge: true);
+
+        return $action;
+    }
+
+    public function getFiltersResetAction(): Action
+    {
+        $action = Action::make('resetFilters')
+            ->label(__('filament-tables::table.filters.actions.reset.label'))
+            ->color('danger')
+            ->action('resetTableFiltersForm')
+            ->table($this)
+            ->authorize(true);
+
+        if ($this->modifyFiltersResetActionUsing) {
+            $action = $this->evaluate($this->modifyFiltersResetActionUsing, [
+                'action' => $action,
+            ]) ?? $action;
+        }
+
+        $action->extraAttributes(['data-table-filter-action' => 'reset'], merge: true);
 
         return $action;
     }

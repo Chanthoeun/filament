@@ -4,6 +4,12 @@ return [
 
     'builder' => [
 
+        'reordering' => [
+            'item' => 'Bloque',
+            'position' => ':label, posición :position de :count',
+            'moved' => ':label se movió a la :position de :count',
+        ],
+
         'actions' => [
 
             'clone' => [
@@ -104,9 +110,19 @@ return [
 
         ],
 
+        'block_picker' => [
+
+            'no_search_results_message' => 'No existen bloques que coincidan con su búsqueda.',
+
+            'search_prompt' => 'Buscar bloques',
+
+        ],
+
     ],
 
     'checkbox_list' => [
+
+        'required_description' => 'Seleccione al menos una opción.',
 
         'actions' => [
 
@@ -153,6 +169,8 @@ return [
     ],
 
     'file_upload' => [
+
+        'placeholder' => 'No hay archivos cargados',
 
         'actions' => [
 
@@ -306,6 +324,14 @@ return [
                 'label' => 'Eliminar fila',
             ],
 
+            'move_down' => [
+                'label' => 'Mover abajo',
+            ],
+
+            'move_up' => [
+                'label' => 'Mover arriba',
+            ],
+
             'reorder' => [
                 'label' => 'Reordenar fila',
             ],
@@ -334,6 +360,12 @@ return [
                 'label' => 'Valor',
             ],
 
+        ],
+
+        'reordering' => [
+            'row' => 'Fila',
+            'position' => ':label, posición :position de :count',
+            'moved' => ':label se movió a la posición :position de :count',
         ],
 
     ],
@@ -394,6 +426,12 @@ return [
     ],
 
     'repeater' => [
+
+        'reordering' => [
+            'item' => 'Elemento',
+            'position' => ':label, posición :position de :count',
+            'moved' => ':label se movió a la posición :position de :count',
+        ],
 
         'columns' => [
 
@@ -493,6 +531,10 @@ return [
 
                 ],
 
+            ],
+
+            'close_panel' => [
+                'label' => 'Cerrar panel',
             ],
 
             'custom_block' => [
@@ -659,6 +701,28 @@ return [
 
         ],
 
+        'custom_blocks' => [
+
+            'actions' => [
+
+                'delete' => [
+                    'label' => 'Borrar bloque',
+                ],
+
+                'edit' => [
+                    'label' => 'Editar bloque',
+                ],
+
+            ],
+
+            'no_search_results_message' => 'No existen bloques que coincidan con su búsqueda.',
+
+            'search_label' => 'Buscar bloques',
+
+            'search_prompt' => 'Buscar bloques',
+
+        ],
+
         'file_attachments_accepted_file_types_message' => 'Los archivos cargados deben ser de tipo: :values.',
 
         'file_attachments_max_size_message' => 'Los archivos cargados no deben tener más de :max kilobytes.',
@@ -795,6 +859,8 @@ return [
             'false' => 'No',
         ],
 
+        'error_message' => 'No se han podido cargar las opciones. Por favor, inténtelo de nuevo.',
+
         'loading_message' => 'Cargando...',
 
         'max_items_message' => 'Solo :count pueden ser seleccionados.',
@@ -804,6 +870,8 @@ return [
         'no_search_results_message' => 'No se encontraron coincidencias con su búsqueda.',
 
         'placeholder' => 'Seleccione una opción',
+
+        'required_description' => 'Seleccione una opción.',
 
         'searching_message' => 'Buscando...',
 
@@ -853,6 +921,8 @@ return [
     ],
 
     'toggle_buttons' => [
+
+        'required_description' => 'Seleccione al menos una opción.',
 
         'boolean' => [
             'true' => 'Sí',

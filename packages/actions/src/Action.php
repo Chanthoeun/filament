@@ -7,7 +7,6 @@ use Closure;
 use Filament\Actions\Concerns\HasTooltip;
 use Filament\Actions\Enums\ActionStatus;
 use Filament\Schemas\Components\Contracts\HasExtraItemActions;
-use Filament\Support\Components\Contracts\HasEmbeddedView;
 use Filament\Support\Components\ViewComponent;
 use Filament\Support\Concerns\HasBadge;
 use Filament\Support\Concerns\HasBadgeTooltip;
@@ -63,7 +62,7 @@ class Action extends ViewComponent implements Arrayable
     use Concerns\CanBeBooted;
     use Concerns\CanBeDisabled;
     use Concerns\CanBeHidden;
-    use Concerns\CanBeLabeledFrom;
+    use Concerns\CanBeLabeledFromBreakpoint;
     use Concerns\CanBeMounted;
     use Concerns\CanBeOutlined;
     use Concerns\CanBeRateLimited;
@@ -137,6 +136,8 @@ class Action extends ViewComponent implements Arrayable
     protected ?ActionStatus $status = null;
 
     protected ?Action $parentAction = null;
+
+    protected ?Action $mountedParentAction = null;
 
     final public function __construct(?string $name)
     {
@@ -536,7 +537,9 @@ class Action extends ViewComponent implements Arrayable
             || blank($table->getModel())
             || is_a($record::class, $table->getModel(), true)
         ) && filled($recordKey = $this->resolveRecordKey($record))) {
-            $context['recordKey'] = $recordKey;
+            $context['recordKey'] = ($table && (! $this->getParentAction()))
+                ? $table->getRecordKey($record)
+                : $recordKey;
         }
 
         if ($this->getParentAction()) {
@@ -569,14 +572,15 @@ class Action extends ViewComponent implements Arrayable
             'livewire' => [$this->getLivewire()],
             'model' => [$this->getModel()],
             'mountedActions' => [$this->getLivewire()->getMountedActions()],
+            'parentAction' => [$this->mountedParentAction ?? $this->getParentAction()],
             'record' => [$this->getRecord()],
             'selectedRecords', 'records' => [$this->getIndividuallyAuthorizedSelectedRecords()],
             'selectedRecordsQuery', 'recordsQuery' => [$this->getSelectedRecordsQuery()],
             'schema' => [$this->getSchemaContainer()],
             'schemaComponent', 'component' => [$this->getSchemaComponent()],
             'schemaOperation', 'context', 'operation' => [$this->getSchemaContainer()?->getOperation() ?? $this->getSchemaComponent()?->getContainer()->getOperation()],
-            'schemaGet', 'get' => [$this->getSchemaComponent()->makeGetUtility()->skipComponentsChildContainersWhileSearching(false)],
-            'schemaSet', 'set' => [$this->getSchemaComponent()->makeSetUtility()->skipComponentsChildContainersWhileSearching(false)],
+            'schemaGet', 'get' => [$this->getSchemaComponent()->makeGetUtility()->skipComponentsChildSchemasWhileSearching(false)],
+            'schemaSet', 'set' => [$this->getSchemaComponent()->makeSetUtility()->skipComponentsChildSchemasWhileSearching(false)],
             'schemaComponentState', 'state' => [$this->getSchemaComponentState()],
             'schemaState' => [$this->getSchemaState()],
             'table' => [$this->getTable()],
@@ -682,6 +686,7 @@ class Action extends ViewComponent implements Arrayable
             }
 
             $this->clearVisibilityCache();
+            $this->getRootGroup()?->clearVisibilityCache();
         }
     }
 
@@ -788,7 +793,7 @@ class Action extends ViewComponent implements Arrayable
 
     public function toHtml(): string
     {
-        if (($this instanceof HasEmbeddedView) && (! $this->hasView())) {
+        if (! $this->hasView()) {
             return $this->toEmbeddedHtml();
         }
 
@@ -833,7 +838,7 @@ class Action extends ViewComponent implements Arrayable
             && ! $this->hasMarkAsRead()
             && ! $this->hasMarkAsUnread()
             && ! $this->hasAlpineClickHandler()
-            && ! $this->hasCustomLivewireClickHandler()
+            && ! $this->hasLivewireClickHandlerEnabledConfiguration()
             && ! $this->hasLivewireTarget()
             && ! $this->hasCanSubmitForm()
             && ! $this->hasFormId()
@@ -856,7 +861,15 @@ class Action extends ViewComponent implements Arrayable
         return $this->alpineClickHandler !== null;
     }
 
+    /**
+     * @deprecated Use `hasLivewireClickHandlerEnabledConfiguration()` instead.
+     */
     public function hasCustomLivewireClickHandler(): bool
+    {
+        return $this->hasLivewireClickHandlerEnabledConfiguration();
+    }
+
+    public function hasLivewireClickHandlerEnabledConfiguration(): bool
     {
         return $this->isLivewireClickHandlerEnabled !== null;
     }
@@ -921,7 +934,7 @@ class Action extends ViewComponent implements Arrayable
         // Match `ComponentAttributeBag::__toString()` attribute escaping (only `"` → `\"`).
         $handler = str_replace('"', '\\"', $handler);
 
-        return "<button type=\"button\" wire:loading.attr=\"disabled\" wire:click=\"{$handler}\"{$wireKeyAttribute} class=\"{$classString}\"{$styleString}>{$iconHtml}{$loadingHtml}<span class=\"fi-link-label\">{$label}</span></button>";
+        return "<button type=\"button\" wire:loading.attr=\"aria-disabled\" wire:loading.class=\"fi-disabled\" wire:click=\"{$handler}\"{$wireKeyAttribute} class=\"{$classString}\"{$styleString}>{$iconHtml}{$loadingHtml}<span class=\"fi-link-label\">{$label}</span></button>";
     }
 
     protected function canRenderOptimizedGrouped(): bool
@@ -942,7 +955,7 @@ class Action extends ViewComponent implements Arrayable
             && ! $this->hasMarkAsRead()
             && ! $this->hasMarkAsUnread()
             && ! $this->hasAlpineClickHandler()
-            && ! $this->hasCustomLivewireClickHandler()
+            && ! $this->hasLivewireClickHandlerEnabledConfiguration()
             && ! $this->hasLivewireTarget()
             && ! $this->hasCanSubmitForm();
     }
@@ -974,13 +987,13 @@ class Action extends ViewComponent implements Arrayable
             )?->toHtml() : '';
             $hrefHtml = generate_href_html($url)->toHtml();
 
-            return "<a {$hrefHtml}{$wireKeyAttribute} class=\"{$classString}\"{$styleString}>{$iconHtml}<span class=\"fi-dropdown-list-item-label\">{$label}</span></a>";
+            return "<a {$hrefHtml}{$wireKeyAttribute} class=\"{$classString}\"{$styleString} role=\"menuitem\" tabindex=\"-1\">{$iconHtml}<span class=\"fi-dropdown-list-item-label\">{$label}</span></a>";
         }
 
         $handler = $this->getLivewireClickHandler();
 
         if (blank($handler)) {
-            return "<button type=\"button\"{$wireKeyAttribute} class=\"{$classString}\"{$styleString}><span class=\"fi-dropdown-list-item-label\">{$label}</span></button>";
+            return "<button type=\"button\"{$wireKeyAttribute} class=\"{$classString}\"{$styleString} role=\"menuitem\" tabindex=\"-1\"><span class=\"fi-dropdown-list-item-label\">{$label}</span></button>";
         }
 
         $loadingDelay = config('filament.livewire_loading_delay', 'default');
@@ -1003,7 +1016,7 @@ class Action extends ViewComponent implements Arrayable
         // Match `ComponentAttributeBag::__toString()` attribute escaping (only `"` → `\"`).
         $handlerEscaped = str_replace('"', '\\"', $handler);
 
-        return "<button type=\"button\" wire:loading.attr=\"disabled\" wire:click=\"{$handlerEscaped}\"{$wireKeyAttribute} class=\"{$classString}\"{$styleString}>{$iconHtml}{$loadingHtml}<span class=\"fi-dropdown-list-item-label\">{$label}</span></button>";
+        return "<button type=\"button\" wire:loading.attr=\"aria-disabled\" wire:loading.class=\"fi-disabled\" wire:click=\"{$handlerEscaped}\"{$wireKeyAttribute} class=\"{$classString}\"{$styleString} role=\"menuitem\" tabindex=\"-1\">{$iconHtml}{$loadingHtml}<span class=\"fi-dropdown-list-item-label\">{$label}</span></button>";
     }
 
     protected function toBadgeHtml(): string
@@ -1204,5 +1217,12 @@ class Action extends ViewComponent implements Arrayable
     public function getParentAction(): ?Action
     {
         return $this->parentAction;
+    }
+
+    public function mountedParentAction(?Action $action): static
+    {
+        $this->mountedParentAction = $action;
+
+        return $this;
     }
 }

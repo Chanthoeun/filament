@@ -1,9 +1,8 @@
 ---
 title: Editing records
 ---
-import AutoScreenshot from "@components/AutoScreenshot.astro"
 
-<AutoScreenshot name="panels/resources/editing" alt="Resource edit page" version="4.x" />
+<AutoScreenshot name="panels/resources/editing" alt="Resource edit page" />
 
 ## Customizing data before filling the form
 
@@ -19,6 +18,30 @@ protected function mutateFormDataBeforeFill(array $data): array
 ```
 
 Alternatively, if you're editing records in a modal action, check out the [Actions documentation](../actions/edit#customizing-data-before-filling-the-form).
+
+## Refreshing form data
+
+If an action modifies a record while you are editing it, you can refresh selected data in the form using the `refreshFormData()` method:
+
+```php
+use App\Models\Post;
+use Filament\Actions\Action;
+
+Action::make('approve')
+    ->action(function (Post $record) {
+        $record->approve();
+
+        $this->refreshFormData([
+            'status',
+        ]);
+    })
+```
+
+Pass the form state paths you want to refresh. Other fields retain their unsaved edits unless your customization code changes them. Refreshing a parent path or relationship field can replace unsaved changes within it, so prefer the narrowest paths you need rather than refilling the entire form.
+
+The refreshed data uses `mutateFormDataBeforeFill()` and the fields' hydration callbacks, but not the page's `beforeFill()` or `afterFill()` hooks.
+
+`refreshFormData()` uses the page's current record, not a fresh database query. If the record was updated elsewhere, call `$this->getRecord()->refresh()` first. Relationship fields may otherwise reuse relationships already loaded on the record.
 
 ## Customizing data before saving
 
@@ -226,7 +249,7 @@ The page's own hook is called first, followed by each trait hook. Hooks from tra
 
 ## Saving a part of the form independently
 
-You may want to allow the user to save a part of the form independently of the rest of the form. One way to do this is with a [section action in the header or footer](../schemas/sections#adding-actions-to-the-sections-header-or-footer). From the `action()` method, you can call `saveFormComponentOnly()`, passing in the `Section` component that you want to save:
+You may want to allow the user to save a part of the form independently of the rest of the form. One way to do this is with a [section action in the header or footer](../schemas/sections#inserting-actions-and-other-components-in-the-footer-of-a-section). From the `action()` method, you can call `saveFormComponentOnly()`, passing in the `Section` component that you want to save:
 
 ```php
 use Filament\Actions\Action;
@@ -255,7 +278,7 @@ Section::make('Rate limiting')
 
 The `$operation` helper is available, to ensure that the action is only visible when the form is being edited.
 
-<AutoScreenshot name="panels/resources/editing-section-actions" alt="Resource edit page with section footer save action" version="4.x" />
+<AutoScreenshot name="panels/resources/editing-section-actions" alt="Resource edit page with section footer save action" />
 
 ## Halting the saving process
 
@@ -304,7 +327,8 @@ On resource pages, actions are usually in 2 places: in the top right of the page
 For example, you may add a new button action next to "Delete" on the Edit page:
 
 ```php
-use Filament\Actions;
+use Filament\Actions\Action;
+use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 
 class EditUser extends EditRecord
@@ -314,17 +338,17 @@ class EditUser extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            Actions\Action::make('impersonate')
+            Action::make('impersonate')
                 ->action(function (): void {
                     // ...
                 }),
-            Actions\DeleteAction::make(),
+            DeleteAction::make(),
         ];
     }
 }
 ```
 
-<AutoScreenshot name="panels/resources/editing-header-actions" alt="Resource edit page with custom header actions" version="4.x" />
+<AutoScreenshot name="panels/resources/editing-header-actions" alt="Resource edit page with custom header actions" />
 
 Or, a new button next to "Save" below the form:
 
@@ -376,7 +400,7 @@ protected function getFormActions(): array
 }
 ```
 
-<AutoScreenshot name="panels/resources/editing-save-in-header" alt="Resource edit page with save action in the header" version="4.x" />
+<AutoScreenshot name="panels/resources/editing-save-in-header" alt="Resource edit page with save action in the header" />
 
 ## Creating another Edit page
 
@@ -422,14 +446,14 @@ public function form(Schema $schema): Schema
 If you're using [resource sub-navigation](overview#resource-sub-navigation), you can register this page as normal in `getRecordSubNavigation()` of the resource:
 
 ```php
-use App\Filament\Resources\Customers\Pages;
+use App\Filament\Resources\Customers\Pages\EditCustomerContact;
 use Filament\Resources\Pages\Page;
 
 public static function getRecordSubNavigation(Page $page): array
 {
     return $page->generateNavigationItems([
         // ...
-        Pages\EditCustomerContact::class,
+        EditCustomerContact::class,
     ]);
 }
 ```
@@ -455,7 +479,7 @@ Inside the `components()` array, you can insert any [schema component](../schema
 
 ### Using a custom Blade view
 
-For further customization opportunities, you can override the static `$view` property on the page class to a custom view in your app:
+For further customization opportunities, you can override the `$view` property on the page class to a custom view in your app:
 
 ```php
 protected string $view = 'filament.resources.users.pages.edit-user';

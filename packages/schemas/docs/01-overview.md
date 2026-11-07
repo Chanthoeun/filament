@@ -1,14 +1,10 @@
 ---
 title: Overview
 ---
-import Aside from "@components/Aside.astro"
-import AutoScreenshot from "@components/AutoScreenshot.astro"
 
 ## Introduction
 
-Schemas form the foundation of Filament's Server-Driven UI approach. They allow you to build user interfaces declaratively using PHP configuration objects. These configuration objects represent components that define the structure and behavior of your UI, such as forms, tables, or lists. Rather than manually writing HTML or JavaScript, you create these schemas to control what gets rendered on the server, streamlining development and ensuring consistency across your app.
-
-Schemas are used extensively across Filament to render UI elements dynamically. Whether you're defining a form field, the layout of your page, or an action button, the schema object defines both the component's configuration and how it interacts with your data. In essence, schemas are the building blocks of Filament UIs.
+Schemas let you build user interfaces in PHP by combining components for input, display, and layout. A schema is represented by a `Filament\Schemas\Schema` object, and you pass its components to the `components()` method. Components can contain child schemas to create nested layouts.
 
 Filament packages provide you with various components. You can find a full list in the [available components section](#available-components):
 
@@ -16,10 +12,6 @@ Filament packages provide you with various components. You can find a full list 
 - [Infolist entries](../infolists) are components for rendering "description lists." Entries are key-value UI elements that can present read-only information like text, icons, and images. The data for an infolist can be sourced from anywhere but commonly comes from an individual Eloquent record.
 - [Layout components](layouts) are used to structure the components. For example, a grid, tabs, or a multi-step form wizard.
 - [Prime components](primes) are simple components that are used to render basic stand-alone static content, such as text, images, and buttons (actions).
-
-Schemas act as a container for many components, and you can add any combination of components within them. Components can also nest child schemas within them, allowing for an infinite level of nesting.
-
-A schema is represented by a `Filament\Schemas\Schema` object, and you can pass an array of components to it in the `components()` method.
 
 ## Available components
 
@@ -68,7 +60,7 @@ To arrange components into a [layout](layouts), Filament includes layout compone
 - [Wizard](wizards)
 - [Callout](callouts)
 - [Empty states](empty-states)
-- Or, build your own [custom layout component](custom-components#custom-layout-components)
+- Or, build your own [custom layout component](custom-components#custom-component-classes)
 
 For displaying arbitrary content, Filament includes [prime](primes) components:
 
@@ -118,7 +110,7 @@ $schema
     ])
 ```
 
-<AutoScreenshot name="schemas/overview/example" alt="Example schema" version="4.x" />
+<AutoScreenshot name="schemas/overview/example" alt="Example schema" />
 
 [Grid](layouts#grid-component) is a layout component that renders multiple components together in a responsive grid. The number of columns in the grid is specified in the `make()` method. The `schema()` method is used to nest components within the grid.
 
@@ -138,7 +130,7 @@ The vast majority of methods used to configure entries accept functions as param
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 
-Grid::make(fn (): array => [
+Grid::make()->columns(fn (): array => [
     'lg' => auth()->user()->isAdmin() ? 4 : 6,
 ])->schema([
     // ...
@@ -173,6 +165,8 @@ function (Get $get) {
 <Aside variant="tip">
     Unless a form field is [reactive](../forms/overview#the-basics-of-reactivity), the schema will not refresh when the value of the field changes, only when the next user interaction occurs that makes a request to the server. If you need to react to changes in a field's value, it should be `live()`.
 </Aside>
+
+By default, `Get` and `Set` avoid resolving fresh child schemas of the component being evaluated while searching for state, but can still search its cached descendants. This prevents recursive schema evaluation. If you need to include fresh child schemas, you can call `skipComponentsChildSchemasWhileSearching(false)` on the utility before using it. Do not disable this protection inside a child schema callback that would resolve itself again.
 
 ### Injecting the current Eloquent record
 
@@ -251,9 +245,9 @@ function (Request $request, Set $set) {
 }
 ```
 
-## Deferring the loading of a child schema
+## Lazy loading a child schema
 
-By default, a schema's components are rendered when the page loads. If a child schema is expensive to render, you can defer its loading until it enters the viewport using the `deferLoading()` method:
+By default, a schema's components are rendered when the page loads. If a child schema is expensive to render, you can lazy load it when it enters the viewport using the `lazyLoaded()` method:
 
 ```php
 use Filament\Forms\Components\TextInput;
@@ -269,15 +263,15 @@ Section::make('Customer details')
                 TextInput::make('email')
                     ->email(),
             ])
-            ->deferLoading(),
+            ->lazyLoaded(),
     )
 ```
 
-The deferred schema initially renders a loading indicator. When the loading indicator enters the viewport, only that schema is rendered in a new request. If the schema contains a validation error before it has loaded, it is loaded automatically so the validation error can be revealed.
+The lazy schema initially renders a loading indicator. When the loading indicator enters the viewport, only that schema is rendered in a new request. If the schema contains a validation error before it has loaded, it is loaded automatically so the validation error can be revealed.
 
-If a deferred schema is inside a concealed component, such as a collapsed section or an inactive tab, it will not load until its parent is revealed and it enters the viewport. Once a schema has loaded, it remains loaded for the lifetime of the Livewire component.
+If a lazy schema is inside a concealed component, such as a collapsed section or an inactive tab, it will not load until its parent is revealed and it enters the viewport. Once a schema has loaded, it remains loaded for the lifetime of the Livewire component.
 
-Every deferred schema needs a unique key. In this example, the child schema inherits the `customerDetails` key from the section. You can instead call `key()` on the child schema itself. If multiple child schemas of the same component are deferred, such as a section's content and footer schemas, you must call `key()` on each additional schema so that they do not inherit the same key. If you defer the schema for a repeater item or builder block, each item schema automatically receives a unique key from its state path:
+Every lazy schema needs a unique key. In this example, the child schema inherits the `customerDetails` key from the section. You can instead call `key()` on the child schema itself. If multiple child schemas of the same component are lazy, such as a section's content and footer schemas, you must call `key()` on each additional schema so that they do not inherit the same key. If you lazy load the schema for a repeater item or builder block, each item schema automatically receives a unique key from its state path:
 
 ```php
 use Filament\Forms\Components\Repeater;
@@ -292,11 +286,30 @@ Repeater::make('members')
                 TextInput::make('email')
                     ->email(),
             ])
-            ->deferLoading(),
+            ->lazyLoaded(),
     )
 ```
 
-You may also pass a boolean or function to `deferLoading()` to control it conditionally.
+You may also pass a boolean or function to `lazyLoaded()` to control it conditionally.
+
+## Setting the root heading level
+
+By default, headings in a schema start at level two, since schemas are usually rendered below a page's level-one heading. If you render a schema elsewhere in the document hierarchy, you can change its root heading level using the `rootHeadingLevel()` method:
+
+```php
+use Filament\Schemas\Schema;
+
+public function productSchema(Schema $schema): Schema
+{
+    return $schema
+        ->rootHeadingLevel(3)
+        ->components([
+            // ...
+        ]);
+}
+```
+
+In this example, the schema is rendered below a level-two heading, so its headings start at level three. Nested section headings automatically use the next level. Labelled repeater and builder items also advance the heading level used by components inside them.
 
 ## Global settings
 
@@ -322,4 +335,4 @@ Section::make()
 
 ## Restricting Livewire file uploads to schema components
 
-If you build a custom Livewire component on top of `InteractsWithSchemas`, Livewire's file upload RPC methods accept uploads to any property path by default. See [Restricting Livewire file uploads to schema components](../../advanced/security#restricting-livewire-file-uploads-to-schema-components) in the security documentation for the `RestrictsFileUploadsToSchemaComponents` trait that locks them down.
+If you build a custom Livewire component on top of `InteractsWithSchemas`, Livewire's file upload RPC methods accept uploads to any property path by default. See [Restricting Livewire file uploads to schema components](../advanced/security#restricting-livewire-file-uploads-to-schema-components) in the security documentation for the `RestrictsFileUploadsToSchemaComponents` trait that locks them down.

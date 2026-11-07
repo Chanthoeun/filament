@@ -21,6 +21,8 @@ use Filament\Schemas\Components\Form;
 use Filament\Schemas\Components\RenderHook;
 use Filament\Schemas\Concerns\RestrictsFileUploadsToSchemaComponents;
 use Filament\Schemas\Schema;
+use Filament\Support\Components\Attributes\Exposed;
+use Filament\Support\Components\Attributes\Unexposed;
 use Filament\Support\Enums\Alignment;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Auth\Events\Attempting;
@@ -55,6 +57,7 @@ class Login extends SimplePage
     #[Locked]
     public ?string $userUndertakingMultiFactorAuthentication = null;
 
+    #[Unexposed]
     public function mount(): void
     {
         if (Filament::auth()->check()) {
@@ -64,6 +67,7 @@ class Login extends SimplePage
         $this->form->fill();
     }
 
+    #[Exposed]
     public function authenticate(): ?LoginResponse
     {
         try {
@@ -113,28 +117,38 @@ class Login extends SimplePage
         }, $timeboxDuration);
 
         $needsMultiFactorChallenge = app(Timebox::class)->call(function (Timebox $timebox) use ($user): bool {
+            $userUndertakingMultiFactorAuthenticationData = $this->getUserUndertakingMultiFactorAuthenticationData();
+
             if (
-                filled($this->userUndertakingMultiFactorAuthentication) &&
-                (decrypt($this->userUndertakingMultiFactorAuthentication) === $user->getAuthIdentifier())
+                $userUndertakingMultiFactorAuthenticationData &&
+                hash_equals($userUndertakingMultiFactorAuthenticationData['userKey'], Filament::getUserScopedAuthIdentifier($user)) &&
+                $this->getUserUndertakingMultiFactorAuthentication()
             ) {
                 if ($this->isMultiFactorChallengeRateLimited($user)) {
                     return true;
                 }
 
+                $this->cacheSchema('multiFactorChallengeForm', null);
                 $this->multiFactorChallengeForm->validate();
 
                 return false;
             }
 
+            $this->userUndertakingMultiFactorAuthentication = null;
+
             $multiFactorChallenge = $this->getMultiFactorChallenge();
 
             if ($multiFactorAuthenticationProvider = $multiFactorChallenge->getFirstEnabledProvider($user)) {
-                $this->userUndertakingMultiFactorAuthentication = encrypt($user->getAuthIdentifier());
+                $this->userUndertakingMultiFactorAuthentication = encrypt([
+                    'identifier' => $user->getAuthIdentifier(),
+                    'userKey' => Filament::getUserScopedAuthIdentifier($user),
+                ]);
 
                 $multiFactorChallenge->beforeChallenge($user, $multiFactorAuthenticationProvider);
             }
 
             if (filled($this->userUndertakingMultiFactorAuthentication)) {
+                $this->cacheSchema('multiFactorChallengeForm', null);
                 $this->multiFactorChallengeForm->fill();
 
                 return true;
@@ -151,10 +165,16 @@ class Login extends SimplePage
             return null;
         }
 
+        $userScopedAuthIdentifier = Filament::getUserScopedAuthIdentifier($user);
+
         // Credentials are deliberately validated again after the multi-factor challenge so that
         // password and panel access changes made during the challenge are observed before login.
         // The corresponding second `Attempting` event is intentional.
-        if (! $authGuard->attemptWhen($credentials, fn (Authenticatable $user): bool => $this->isUserAllowedToAccessPanel($user), $remember)) {
+        if (! $authGuard->attemptWhen(
+            $credentials,
+            fn (Authenticatable $user): bool => hash_equals($userScopedAuthIdentifier, Filament::getUserScopedAuthIdentifier($user)) && $this->isUserAllowedToAccessPanel($user),
+            $remember,
+        )) {
             $this->throwFailureValidationException();
         }
 
@@ -234,12 +254,14 @@ class Login extends SimplePage
         ]);
     }
 
+    #[Unexposed]
     public function defaultForm(Schema $schema): Schema
     {
         return $schema
             ->statePath('data');
     }
 
+    #[Unexposed]
     public function form(Schema $schema): Schema
     {
         return $schema
@@ -250,6 +272,7 @@ class Login extends SimplePage
             ]);
     }
 
+    #[Unexposed]
     public function defaultMultiFactorChallengeForm(Schema $schema): Schema
     {
         return $schema
@@ -262,7 +285,7 @@ class Login extends SimplePage
 
                 return [
                     ...Arr::wrap($this->getMultiFactorProviderFormComponent()),
-                    ...$this->getMultiFactorChallenge()->getChallengeSchemaComponents($user),
+                    ...$this->getMultiFactorChallenge()->getChallengeFormComponents($user),
                 ];
             })
             ->statePath('data.multiFactor');
@@ -270,15 +293,45 @@ class Login extends SimplePage
 
     protected function getUserUndertakingMultiFactorAuthentication(): ?Authenticatable
     {
-        if (blank($this->userUndertakingMultiFactorAuthentication)) {
+        $data = $this->getUserUndertakingMultiFactorAuthenticationData();
+
+        if (! $data) {
             return null;
         }
 
         $authProvider = Filament::auth()->getProvider(); /** @phpstan-ignore-line */
+        $user = $authProvider->retrieveById($data['identifier']);
 
-        return $authProvider->retrieveById(decrypt($this->userUndertakingMultiFactorAuthentication));
+        if ((! $user) || (! hash_equals($data['userKey'], Filament::getUserScopedAuthIdentifier($user)))) {
+            return null;
+        }
+
+        return $user;
     }
 
+    /**
+     * @return array{identifier: mixed, userKey: string} | null
+     */
+    protected function getUserUndertakingMultiFactorAuthenticationData(): ?array
+    {
+        if (blank($this->userUndertakingMultiFactorAuthentication)) {
+            return null;
+        }
+
+        $data = decrypt($this->userUndertakingMultiFactorAuthentication);
+
+        if (
+            (! is_array($data))
+            || (! array_key_exists('identifier', $data))
+            || (! is_string($data['userKey'] ?? null))
+        ) {
+            return null;
+        }
+
+        return $data;
+    }
+
+    #[Unexposed]
     public function multiFactorChallengeForm(Schema $schema): Schema
     {
         return $schema;
@@ -319,9 +372,10 @@ class Login extends SimplePage
             return null;
         }
 
-        return $this->getMultiFactorChallenge()->getProviderPickerSchemaComponent($user);
+        return $this->getMultiFactorChallenge()->getProviderPickerFormComponent($user);
     }
 
+    #[Unexposed]
     public function registerAction(): Action
     {
         return Action::make('register')
@@ -330,11 +384,13 @@ class Login extends SimplePage
             ->url(filament()->getRegistrationUrl());
     }
 
+    #[Unexposed]
     public function getTitle(): string | Htmlable
     {
         return __('filament-panels::auth/pages/login.title');
     }
 
+    #[Unexposed]
     public function getHeading(): string | Htmlable | null
     {
         if (filled($this->userUndertakingMultiFactorAuthentication)) {
@@ -400,6 +456,7 @@ class Login extends SimplePage
         ];
     }
 
+    #[Unexposed]
     public function getSubheading(): string | Htmlable | null
     {
         if (filled($this->userUndertakingMultiFactorAuthentication)) {
@@ -413,6 +470,7 @@ class Login extends SimplePage
         return new HtmlString(__('filament-panels::auth/pages/login.actions.register.before') . ' ' . $this->registerAction->toHtml());
     }
 
+    #[Unexposed]
     public function content(Schema $schema): Schema
     {
         return $schema
@@ -424,6 +482,7 @@ class Login extends SimplePage
             ]);
     }
 
+    #[Unexposed]
     public function getFormContentComponent(): Component
     {
         return Form::make([EmbeddedSchema::make('form')])
@@ -438,6 +497,7 @@ class Login extends SimplePage
             ->visible(fn (): bool => blank($this->userUndertakingMultiFactorAuthentication));
     }
 
+    #[Unexposed]
     public function getMultiFactorChallengeFormContentComponent(): Component
     {
         return Form::make([EmbeddedSchema::make('multiFactorChallengeForm')])
@@ -451,6 +511,7 @@ class Login extends SimplePage
             ->visible(fn (): bool => filled($this->userUndertakingMultiFactorAuthentication));
     }
 
+    #[Unexposed]
     public function getMultiFactorChallengeFormActionsAlignment(): string | Alignment
     {
         return $this->getFormActionsAlignment();

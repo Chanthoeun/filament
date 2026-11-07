@@ -110,7 +110,7 @@ describe('`beforeChallenge()`', function (): void {
     });
 });
 
-describe('schema components', function (): void {
+describe('form components', function (): void {
     it('does not return a provider picker when only one provider is enabled', function (): void {
         $user = User::factory()
             ->hasEmailAuthentication()
@@ -118,11 +118,11 @@ describe('schema components', function (): void {
 
         $challenge = MultiFactorChallenge::make();
 
-        expect($challenge->getProviderPickerSchemaComponent($user))
+        expect($challenge->getProviderPickerFormComponent($user))
             ->toBeNull()
-            ->and($challenge->getSchemaComponents($user))
+            ->and($challenge->getFormComponents($user))
             ->toHaveCount(1)
-            ->and($challenge->getChallengeSchemaComponents($user)[EmailAuthentication::make()->getId()])
+            ->and($challenge->getChallengeFormComponents($user)[EmailAuthentication::make()->getId()])
             ->toBeInstanceOf(Group::class);
     });
 
@@ -134,37 +134,40 @@ describe('schema components', function (): void {
 
         $challenge = MultiFactorChallenge::make();
 
-        expect($challenge->getProviderPickerSchemaComponent($user))
+        expect($challenge->getProviderPickerFormComponent($user))
             ->toBeInstanceOf(Section::class)
-            ->and($challenge->getSchemaComponents($user))
+            ->and($challenge->getFormComponents($user))
             ->toHaveCount(3)
-            ->and(array_keys($challenge->getChallengeSchemaComponents($user)))
+            ->and(array_keys($challenge->getChallengeFormComponents($user)))
             ->toBe([EmailAuthentication::make()->getId(), AppAuthentication::make()->getId()]);
     });
 
     it('returns no components when the user has no providers enabled', function (): void {
-        expect(MultiFactorChallenge::make()->getSchemaComponents(User::factory()->create()))
+        expect(MultiFactorChallenge::make()->getFormComponents(User::factory()->create()))
             ->toBeEmpty();
     });
 
-    it('only calls `isEnabled()` once per provider when building `getSchemaComponents()`', function (): void {
+    it('builds challenge components for a custom authentication provider', function (): void {
         $user = User::factory()->create();
 
         /** @var MockInterface&MultiFactorAuthenticationProvider $provider */
         $provider = Mockery::mock(MultiFactorAuthenticationProvider::class);
         $provider->shouldReceive('getId')->andReturn('custom');
-        $provider->shouldReceive('isEnabled')->once()->with($user)->andReturnTrue();
-        $provider->shouldReceive('getChallengeFormComponents')->once()->with($user)->andReturn([]);
+        $provider->shouldReceive('isEnabled')->with($user)->andReturnTrue();
+        $provider->shouldReceive('getChallengeFormComponents')->with($user)->andReturn([]);
 
         Filament::getCurrentPanel()->multiFactorAuthentication([$provider]);
 
-        expect(MultiFactorChallenge::make()->getSchemaComponents($user))
-            ->toHaveCount(1);
+        $components = MultiFactorChallenge::make()->getFormComponents($user);
+
+        expect($components)->toHaveCount(1)
+            ->toHaveKey('custom')
+            ->and($components['custom'])->toBeInstanceOf(Group::class);
     });
 });
 
 describe('standalone challenge flow', function (): void {
-    it('blocks an invalid code and accepts a valid code outside `Login`', function (): void {
+    it('blocks an invalid code and accepts a valid code outside `Login`', function (bool $shouldUseLegacyComponentMethods): void {
         /** @var EmailAuthentication $emailAuthentication */
         $emailAuthentication = Filament::getMultiFactorAuthenticationProviders()[EmailAuthentication::make()->getId()];
         $emailAuthentication->generateCodesUsing(static fn (): string => '123456');
@@ -175,7 +178,9 @@ describe('standalone challenge flow', function (): void {
 
         $this->actingAs($user);
 
-        livewire(MultiFactorChallengeBrowserTest::class)
+        livewire(MultiFactorChallengeBrowserTest::class, [
+            'shouldUseLegacyComponentMethods' => $shouldUseLegacyComponentMethods,
+        ])
             ->assertSet('isVerified', false)
             ->fillForm([
                 $emailAuthentication->getId() => [
@@ -193,9 +198,12 @@ describe('standalone challenge flow', function (): void {
             ->call('verify')
             ->assertHasNoFormErrors(form: 'multiFactorChallengeForm')
             ->assertSet('isVerified', true);
-    });
+    })->with([
+        'Form methods' => false,
+        'deprecated Schema methods' => true,
+    ]);
 
-    it('runs the selected provider hook when switching providers across separate layout containers', function (): void {
+    it('runs the selected provider hook when switching providers across separate layout containers', function (bool $shouldUseLegacyComponentMethods): void {
         $user = User::factory()
             ->hasEmailAuthentication()
             ->hasAppAuthentication()
@@ -204,7 +212,8 @@ describe('standalone challenge flow', function (): void {
         $this->actingAs($user);
 
         livewire(MultiFactorChallengeBrowserTest::class, [
-            'shouldSeparateChallengeSchemaComponents' => true,
+            'shouldSeparateChallengeFormComponents' => true,
+            'shouldUseLegacyComponentMethods' => $shouldUseLegacyComponentMethods,
         ])
             ->assertSchemaStateSet([
                 'provider' => EmailAuthentication::make()->getId(),
@@ -213,7 +222,10 @@ describe('standalone challenge flow', function (): void {
             ->set('data.provider', EmailAuthentication::make()->getId());
 
         Notification::assertSentTimes(VerifyEmailAuthentication::class, 2);
-    });
+    })->with([
+        'Form methods' => false,
+        'deprecated Schema methods' => true,
+    ]);
 
     it('fails closed when the user has no enabled providers', function (): void {
         $this->actingAs(User::factory()->create());
@@ -357,35 +369,20 @@ describe('rate limiting', function (): void {
     });
 });
 
-it('has no accessibility issues outside `Login` in light mode', function (): void {
-    retry(10, function (): void {
-        $this->actingAs(User::factory()
-            ->hasEmailAuthentication()
-            ->hasAppAuthentication()
-            ->create());
+it('has no accessibility issues outside `Login` in light and dark modes', function (): void {
+    $this->actingAs(User::factory()
+        ->hasEmailAuthentication()
+        ->hasAppAuthentication()
+        ->create());
 
-        visit(MultiFactorChallengeBrowserTest::getUrl(panel: 'required-multi-factor-authentication'))
-            ->assertSee('Verify multi-factor authentication')
-            ->assertSee('How would you like to verify?')
-            ->assertNoSmoke()
-            ->assertNoAccessibilityIssues();
-    });
-});
+    visit(MultiFactorChallengeBrowserTest::getUrl(panel: 'required-multi-factor-authentication'))
+        ->assertNoSmoke()
+        ->assertNoAccessibilityIssues();
 
-it('has no accessibility issues outside `Login` in dark mode', function (): void {
-    retry(10, function (): void {
-        $this->actingAs(User::factory()
-            ->hasEmailAuthentication()
-            ->hasAppAuthentication()
-            ->create());
-
-        visit(MultiFactorChallengeBrowserTest::getUrl(panel: 'required-multi-factor-authentication'))
-            ->inDarkMode()
-            ->assertSee('Verify multi-factor authentication')
-            ->assertSee('How would you like to verify?')
-            ->assertNoSmoke()
-            ->assertNoAccessibilityIssues();
-    });
+    visit(MultiFactorChallengeBrowserTest::getUrl(panel: 'required-multi-factor-authentication'))
+        ->inDarkMode()
+        ->assertNoSmoke()
+        ->assertNoAccessibilityIssues();
 });
 
 class AlternateMultiFactorChallengeUser extends User {}
